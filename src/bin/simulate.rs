@@ -6,7 +6,7 @@
 // For later: Save images as pngs with heatmapped stuff??
 
 use clap::Parser;
-use rumpus::{Sensor, SensorParams};
+use rumpus::sensor::*;
 use std::{fs::File, io::Read};
 
 #[derive(Parser)]
