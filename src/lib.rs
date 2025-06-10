@@ -1,12 +1,20 @@
 use nalgebra::{Matrix3, Vector3};
 use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
+use std::fmt;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Serialize, Deserialize)]
 pub struct SensorParams {
-    pixel_size_um: (f32, f32),
-    sensor_size_px: (u32, u32),
-    focal_length_mm: f32,
-    solar_pose_deg: (f32, f32, f32),
+    pub pixel_size_um: (f32, f32),
+    pub sensor_size_px: (u32, u32),
+    pub focal_length_mm: f32,
+    pub solar_pose_deg: (f32, f32, f32),
+}
+
+impl fmt::Display for SensorParams {
+    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        unimplemented!();
+    }
 }
 
 /// Represents a simulated sensor in the world.
@@ -146,7 +154,7 @@ impl Sensor {
         (aop_rad.to_degrees(), dop)
     }
 
-    /// Simulates the specified pixels in parallel
+    /// Simulates the specified pixels in parallel.
     /// Returns a row major vector of simulated measurements.
     pub fn par_simulate_pixels(&self, pixels: Vec<(u32, u32)>) -> Vec<(f32, f32)> {
         pixels
