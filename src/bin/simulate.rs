@@ -1,26 +1,25 @@
-// Serde the sensor parameters.
-// Allow passing TOML file via clap to deserialize the sensor parameters.
-// Simulate images using loaded sensor parameters
-// Save images as csv files
-// Use gnuplot to turn the csv files into nice heatmaps.
-// For later: Save images as pngs with heatmapped stuff??
-
 use clap::Parser;
 use rumpus::sensor::*;
-use std::{fs::File, io::Read};
+use std::{
+    fs::File,
+    io::{Read, Write},
+};
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 struct Args {
     #[arg(short, long)]
-    params_path: String,
+    params: String,
+
+    #[arg(short, long, default_value = "aop.dat")]
+    output: String,
 }
 
 fn main() {
     let args = Args::parse();
 
     // Read sensor parameters from config file.
-    let mut file = File::open(args.params_path).unwrap();
+    let mut file = File::open(args.params).unwrap();
     let mut serialized = String::new();
     file.read_to_string(&mut serialized).unwrap();
 
@@ -42,13 +41,14 @@ fn main() {
     // Simulate AoP and DoP information.
     let simulated_image = sensor.par_simulate_pixels(pixels);
 
-    // Dump simulation to STDOUT.
+    // Write simulated output to file.
+    let mut output_file = File::create(args.output).unwrap();
     for row in 0..params.sensor_size_px.1 {
         for col in 0..params.sensor_size_px.0 {
             let idx = (row * params.sensor_size_px.0 + col) as usize;
             let (aop, _) = simulated_image[idx];
-            print!("{:5} ", aop);
+            let _ = write!(output_file, "{:5} ", aop);
         }
-        println!("");
+        let _ = write!(output_file, "\n");
     }
 }
