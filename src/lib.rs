@@ -56,14 +56,14 @@ mod tests {
         for (i, (x, y)) in pixels
             .iter()
             .map(|(col, row)| (*col as f32, *row as f32))
-            .map(|(col, row)| (col - image_center_px.0, -(row - image_center_px.1)))
+            .map(|(col, row)| (col - image_center_px.0, (-row + image_center_px.1)))
             .enumerate()
         {
             let (aop, _) = simulated_image[i];
             let aop_offset_deg = (aop - 90.).abs();
             if aop_offset_deg < aop_threshold_deg {
                 // On the range [-90.0, 90.0]
-                let azimuth_vote = (y / x).atan();
+                let azimuth_vote = (y / x).atan().to_degrees();
 
                 // Map vote to range [0, acc_size].
                 let acc_idx = ((azimuth_vote + 90.) / estimate_resolution_deg).floor() as usize;
@@ -80,7 +80,7 @@ mod tests {
 
         // Map [0, acc_size] index to [-90.0, 90.0] estimate.
         let azimuth_estimate_deg = ((azimuth_estimate_idx as f32) * estimate_resolution_deg) - 90.;
-        let azimuth_deg = 90.;
+        let azimuth_deg = 45.;
         let azimuth_estimate_err = (azimuth_estimate_deg - azimuth_deg).abs();
 
         println!(
@@ -95,7 +95,8 @@ mod tests {
             pixel_size_um: (3.45, 3.45),
             sensor_size_px: (2448, 2048),
             focal_length_mm: 3.5,
-            solar_pose_deg: (0., 90., 180.),
+            enu_pose_deg: (90., 45., 0.),
+            solar_vector_deg: (0., 45.),
         };
 
         (params.clone(), Sensor::from(params))

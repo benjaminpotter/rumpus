@@ -7,10 +7,11 @@
     2448,
     2048
   ],
-  "focal_length_mm": 3.5,
-  "solar_pose_deg": [
-    78.9,
-    -65.2,
-    278.3
-  ]
+  "focal_length_mm": 8.0,
+  "enu_pose_deg": [
+    90.0,
+    45.0,
+    0.0
+  ],
+  "solar_vector_deg": [0.0, 45.0]
 }

@@ -1,4 +1,4 @@
-use nalgebra::{Matrix3, Vector3};
+use nalgebra::{Rotation3, Vector3};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -8,9 +8,13 @@ pub struct SensorParams {
     pub pixel_size_um: (f32, f32),
     pub sensor_size_px: (u32, u32),
     pub focal_length_mm: f32,
-    // TODO: Convert to a horizontal reference frame.
-    pub solar_pose_deg: (f32, f32, f32),
-    // TODO: Specify lon, lat, time to create horizontal to solar transform.
+
+    /// Follows east, north, up reference frame.
+    pub enu_pose_deg: (f32, f32, f32),
+
+    // TODO: Specify lon, lat, time to determine solar vector.
+    /// Follows zenith angle from up and azimuth angle from north.
+    pub solar_vector_deg: (f32, f32),
 }
 
 impl fmt::Display for SensorParams {
@@ -24,8 +28,9 @@ pub struct Sensor {
     pixel_size_mm: Vector3<f32>,
     sensor_size_px: Vector3<f32>,
     focal_point_mm: Vector3<f32>,
-    solar_to_body: Matrix3<f32>,
-    body_to_solar: Matrix3<f32>,
+    enu_to_body: Rotation3<f32>,
+    body_to_enu: Rotation3<f32>,
+    solar_vector_rad: (f32, f32),
 }
 
 impl From<SensorParams> for Sensor {
@@ -46,81 +51,36 @@ impl From<SensorParams> for Sensor {
 
         let focal_point_mm = Vector3::new(0., params.focal_length_mm, 0.);
 
-        let (yaw_deg, pitch_deg, roll_deg) = params.solar_pose_deg;
-        let solar_pose_rad = (
-            yaw_deg.to_radians(),
-            pitch_deg.to_radians(),
-            roll_deg.to_radians(),
+        let (roll_rad, pitch_rad, yaw_rad) = (
+            params.enu_pose_deg.0.to_radians(),
+            params.enu_pose_deg.1.to_radians(),
+            params.enu_pose_deg.2.to_radians(),
         );
-        let solar_to_body = Sensor::solar_to_body_from_pose(solar_pose_rad);
-        let body_to_solar = solar_to_body.transpose();
+
+        // Given roll, pitch, yaw of the body frame wrt the ENU frame.
+        // Given a vector U in the ENU frame, U in the body frame can be calculated using the rotation matrix.
+        let enu_to_body = Rotation3::from_euler_angles(roll_rad, pitch_rad, yaw_rad);
+
+        // Given a vector V in the body frame, V in the ENU frame can be calculated using the rotation matrix.
+        let body_to_enu = enu_to_body.transpose();
+
+        let solar_vector_rad = (
+            params.solar_vector_deg.0.to_radians(),
+            params.solar_vector_deg.1.to_radians(),
+        );
 
         Self {
             pixel_size_mm,
             sensor_size_px,
             focal_point_mm,
-            solar_to_body,
-            body_to_solar,
+            enu_to_body,
+            body_to_enu,
+            solar_vector_rad,
         }
     }
 }
 
 impl Sensor {
-    /// Solar to Body Frame Rotation Matrix
-    ///
-    /// This rotation matrix transforms vectors from the solar vector coordinate system
-    /// to the body coordinate system using three Euler angles.
-    ///
-    /// # Parameters
-    ///
-    /// * ψ - yaw angle (radians)
-    /// * α - pitch angle (radians)
-    /// * β - roll angle (radians)
-    ///
-    /// # Matrix Structure
-    ///
-    /// ```text
-    /// [R₁₁  R₁₂  R₁₃]
-    /// [R₂₁  R₂₂  R₂₃]
-    /// [R₃₁  R₃₂  R₃₃]
-    /// ```
-    ///
-    /// # Components
-    ///
-    /// ## First Row:
-    /// - **R₁₁** = `cos(β)cos(ψ) + sin(β)sin(α)sin(ψ)`
-    /// - **R₁₂** = `-cos(β)sin(ψ) + sin(β)sin(α)cos(ψ)`
-    /// - **R₁₃** = `-sin(β)cos(α)`
-    ///
-    /// ## Second Row:
-    /// - **R₂₁** = `cos(α)sin(ψ)`
-    /// - **R₂₂** = `cos(α)cos(ψ)`
-    /// - **R₂₃** = `sin(α)`
-    ///
-    /// ## Third Row:
-    /// - **R₃₁** = `sin(β)cos(ψ) - cos(β)sin(α)sin(ψ)`
-    /// - **R₃₂** = `-sin(β)sin(ψ) - cos(β)sin(α)cos(ψ)`
-    /// - **R₃₃** = `cos(β)cos(α)`
-    fn solar_to_body_from_pose(pose_solar_rad: (f32, f32, f32)) -> Matrix3<f32> {
-        let (yaw, pitch, roll) = pose_solar_rad;
-
-        let r11 = roll.cos() * yaw.cos() + roll.sin() * pitch.sin() * yaw.sin();
-        let r12 = -roll.cos() * yaw.sin() + roll.sin() * pitch.sin() * yaw.cos();
-        let r13 = -roll.sin() * pitch.cos();
-
-        let r21 = pitch.cos() * yaw.sin();
-        let r22 = pitch.cos() * yaw.cos();
-        let r23 = pitch.sin();
-
-        let r31 = roll.sin() * yaw.cos() - roll.cos() * pitch.sin() * yaw.sin();
-        let r32 = -roll.sin() * yaw.sin() - roll.cos() * pitch.sin() * yaw.cos();
-        let r33 = roll.cos() * pitch.cos();
-
-        // nalgebra iterator fills column-wise.
-        let pose_iter = vec![r11, r21, r31, r12, r22, r32, r13, r23, r33];
-        Matrix3::from_iterator(pose_iter.into_iter())
-    }
-
     /// Simulate a pixel using the Rayleigh sky model.
     pub fn simulate_pixel(&self, pixel: &(u32, u32)) -> (f32, f32) {
         // Compute physical pixel location on image sensor.
@@ -130,28 +90,27 @@ impl Sensor {
 
         // Trace a ray from the physical pixel location through the focal point.
         // This approach uses the pinhole camera model.
-        let ray_body = phys_loc + self.focal_point_mm;
+        let body_ray = phys_loc + self.focal_point_mm;
 
         // Transform ray from body (sensor) frame into the solar frame.
-        let ray_solar = self.body_to_solar * ray_body;
+        let enu_ray = self.body_to_enu * body_ray;
+        let enu_ray = enu_ray.normalize();
 
         // Compute the zenith and azimuth angles of the ray.
-        let zenith = (ray_solar.z / ray_solar.norm()).acos();
-        let azimuth = ray_solar.y.atan2(ray_solar.x);
+        let ray_azimuth_rad = enu_ray.x.atan2(enu_ray.y);
+        let ray_zenith_rad = enu_ray.z.acos();
 
         // Apply Rayleigh sky model using zenith and azimuth of ray to compute AoP and DoP.
-        let dop_max = 1.0;
-        let dop = dop_max * zenith.sin().powf(2.) / (1. + zenith.cos().powf(2.));
+        let (solar_azimuth_rad, solar_zenith_rad) = self.solar_vector_rad;
 
-        let mut aop_rad = 0.;
-
-        // Ignore invalid solution at DoP == 0.
-        if dop != 0. {
-            let evector_solar = Vector3::new(azimuth.sin(), -azimuth.cos(), 0.);
-            let evector_body = self.solar_to_body * evector_solar;
-
-            aop_rad = (evector_body.x / evector_body.z).atan();
-        }
+        let dop = 0.;
+        let aop_rad = ((ray_zenith_rad.sin() * solar_zenith_rad.cos()
+            - ray_zenith_rad.cos()
+                * (ray_azimuth_rad - solar_azimuth_rad).cos()
+                * solar_zenith_rad.sin())
+            / (ray_azimuth_rad - solar_azimuth_rad).sin()
+            / solar_zenith_rad.sin())
+        .atan();
 
         (aop_rad.to_degrees(), dop)
     }
