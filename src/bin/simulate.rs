@@ -2,7 +2,7 @@ use clap::Parser;
 use rumpus::sensor::*;
 use std::{
     fs::File,
-    io::{Read, Write},
+    io::{BufWriter, Read, Write},
 };
 
 #[derive(Parser)]
@@ -39,10 +39,12 @@ fn main() {
         .collect();
 
     // Simulate AoP and DoP information.
-    let simulated_image = sensor.par_simulate_pixels(pixels);
+    let simulated_image = sensor.par_simulate_pixels(&pixels);
 
     // Write simulated output to file.
-    let mut output_file = File::create(args.output).unwrap();
+    // Each call to write! on the raw file makes a system call.
+    // Using BufWriter drastically speeds up the file dump.
+    let mut output_file = BufWriter::new(File::create(args.output).unwrap());
     for row in 0..params.sensor_size_px.1 {
         for col in 0..params.sensor_size_px.0 {
             let idx = (row * params.sensor_size_px.0 + col) as usize;

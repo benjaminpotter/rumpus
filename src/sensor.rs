@@ -122,7 +122,7 @@ impl Sensor {
     }
 
     /// Simulate a pixel using the Rayleigh sky model.
-    pub fn simulate_pixel(&self, pixel: (u32, u32)) -> (f32, f32) {
+    pub fn simulate_pixel(&self, pixel: &(u32, u32)) -> (f32, f32) {
         // Compute physical pixel location on image sensor.
         let pixel = Vector3::new(pixel.0 as f32, 0., pixel.1 as f32);
         let pixel = pixel - self.sensor_size_px * 0.5;
@@ -158,10 +158,10 @@ impl Sensor {
 
     /// Simulates the specified pixels in parallel.
     /// Returns a row major vector of simulated measurements.
-    pub fn par_simulate_pixels(&self, pixels: Vec<(u32, u32)>) -> Vec<(f32, f32)> {
+    pub fn par_simulate_pixels(&self, pixels: &Vec<(u32, u32)>) -> Vec<(f32, f32)> {
         pixels
             .par_iter()
-            .map(|pixel| self.simulate_pixel(*pixel))
+            .map(|pixel| self.simulate_pixel(pixel))
             .collect()
     }
 }
