@@ -8,7 +8,9 @@ pub struct SensorParams {
     pub pixel_size_um: (f32, f32),
     pub sensor_size_px: (u32, u32),
     pub focal_length_mm: f32,
+    // TODO: Convert to a horizontal reference frame.
     pub solar_pose_deg: (f32, f32, f32),
+    // TODO: Specify lon, lat, time to create horizontal to solar transform.
 }
 
 impl fmt::Display for SensorParams {
