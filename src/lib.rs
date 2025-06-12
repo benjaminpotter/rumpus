@@ -3,6 +3,10 @@ pub mod sensor;
 #[cfg(test)]
 mod tests {
     use crate::sensor::*;
+    use std::{
+        fs::File,
+        io::{BufWriter, Write},
+    };
 
     // TODO: How do we test something like this?
 
@@ -56,7 +60,7 @@ mod tests {
         for (i, (x, y)) in pixels
             .iter()
             .map(|(col, row)| (*col as f32, *row as f32))
-            .map(|(col, row)| (col - image_center_px.0, (-row + image_center_px.1)))
+            .map(|(col, row)| (col - image_center_px.0, row - image_center_px.1))
             .enumerate()
         {
             let (aop, _) = simulated_image[i];
@@ -70,6 +74,12 @@ mod tests {
                 accumulator[acc_idx] += 1;
             }
         }
+
+        // let mut writer = BufWriter::new(File::create("acc.dat").unwrap());
+        // for (i, votes) in accumulator.iter().enumerate() {
+        //     let angle = (i as f32 * estimate_resolution_deg) - 90.;
+        //     let _ = writeln!(writer, "{:05.5} {:05}", angle, votes);
+        // }
 
         let mut azimuth_estimate_idx = 0;
         for (i, votes) in accumulator.iter().enumerate().skip(1) {
