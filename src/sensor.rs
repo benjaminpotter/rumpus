@@ -92,7 +92,7 @@ impl Sensor {
         // This approach uses the pinhole camera model.
         let body_ray = phys_loc + self.focal_point_mm;
 
-        // Transform ray from body (sensor) frame into the solar frame.
+        // Transform ray from body (sensor) frame into the ENU frame.
         let enu_ray = self.body_to_enu * body_ray;
         let enu_ray = enu_ray.normalize();
 
@@ -116,7 +116,7 @@ impl Sensor {
     }
 
     /// Simulates the specified pixels in parallel.
-    /// Returns a row major vector of simulated measurements.
+    /// Returns a vector of pixels in the same order they were provided.
     pub fn par_simulate_pixels(&self, pixels: &Vec<(u32, u32)>) -> Vec<(f32, f32)> {
         pixels
             .par_iter()
