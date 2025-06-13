@@ -1,20 +1,22 @@
+use chrono::{DateTime, Utc};
 use nalgebra::{Rotation3, Vector3};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use spa::{SolarPos, StdFloatOps};
 use std::fmt;
 
 #[derive(Clone, Copy, Serialize, Deserialize)]
 pub struct SensorParams {
-    pub pixel_size_um: (f32, f32),
+    pub pixel_size_um: (f64, f64),
     pub sensor_size_px: (u32, u32),
-    pub focal_length_mm: f32,
+    pub focal_length_mm: f64,
 
     /// Follows east, north, up reference frame.
-    pub enu_pose_deg: (f32, f32, f32),
+    pub enu_pose_deg: (f64, f64, f64),
 
-    // TODO: Specify lon, lat, time to determine solar vector.
-    /// Follows zenith angle from up and azimuth angle from north.
-    pub solar_vector_deg: (f32, f32),
+    pub lon: f64,
+    pub lat: f64,
+    pub time: DateTime<Utc>,
 }
 
 impl fmt::Display for SensorParams {
@@ -25,12 +27,12 @@ impl fmt::Display for SensorParams {
 
 /// Represents a simulated sensor in the world.
 pub struct Sensor {
-    pixel_size_mm: Vector3<f32>,
-    sensor_size_px: Vector3<f32>,
-    focal_point_mm: Vector3<f32>,
-    enu_to_body: Rotation3<f32>,
-    body_to_enu: Rotation3<f32>,
-    solar_vector_rad: (f32, f32),
+    pixel_size_mm: Vector3<f64>,
+    sensor_size_px: Vector3<f64>,
+    focal_point_mm: Vector3<f64>,
+    enu_to_body: Rotation3<f64>,
+    body_to_enu: Rotation3<f64>,
+    solar_vector_rad: (f64, f64),
 }
 
 impl From<SensorParams> for Sensor {
@@ -44,9 +46,9 @@ impl From<SensorParams> for Sensor {
 
         // Convert sensor size to floating point.
         let sensor_size_px = Vector3::new(
-            (params.sensor_size_px.0) as f32,
+            (params.sensor_size_px.0) as f64,
             0.,
-            (params.sensor_size_px.1) as f32,
+            (params.sensor_size_px.1) as f64,
         );
 
         let focal_point_mm = Vector3::new(0., params.focal_length_mm, 0.);
@@ -64,9 +66,14 @@ impl From<SensorParams> for Sensor {
         // Given a vector V in the body frame, V in the ENU frame can be calculated using the rotation matrix.
         let body_to_enu = enu_to_body.transpose();
 
-        let solar_vector_rad = (
-            params.solar_vector_deg.0.to_radians(),
-            params.solar_vector_deg.1.to_radians(),
+        // Given a lon, lat, and time, compute the solar azimuth and zenith angle.
+        let solar_pos: SolarPos =
+            spa::solar_position::<StdFloatOps>(params.time, params.lat, params.lon).unwrap();
+        let solar_vector_rad: (f64, f64) = (
+            // Measured CW from north.
+            solar_pos.azimuth,
+            // Measured between zenith and sun's center.
+            solar_pos.zenith_angle,
         );
 
         Self {
@@ -82,9 +89,9 @@ impl From<SensorParams> for Sensor {
 
 impl Sensor {
     /// Simulate a pixel using the Rayleigh sky model.
-    pub fn simulate_pixel(&self, pixel: &(u32, u32)) -> (f32, f32) {
+    pub fn simulate_pixel(&self, pixel: &(u32, u32)) -> (f64, f64) {
         // Compute physical pixel location on image sensor.
-        let pixel = Vector3::new(pixel.0 as f32, 0., pixel.1 as f32);
+        let pixel = Vector3::new(pixel.0 as f64, 0., pixel.1 as f64);
         let pixel = pixel - self.sensor_size_px * 0.5;
         let phys_loc = self.pixel_size_mm.component_mul(&pixel);
 
@@ -103,6 +110,7 @@ impl Sensor {
         // Apply Rayleigh sky model using zenith and azimuth of ray to compute AoP and DoP.
         let (solar_azimuth_rad, solar_zenith_rad) = self.solar_vector_rad;
 
+        // TODO: Compute DoP using scattering angle.
         let dop = 0.;
         let aop_rad = ((ray_zenith_rad.sin() * solar_zenith_rad.cos()
             - ray_zenith_rad.cos()
@@ -117,7 +125,7 @@ impl Sensor {
 
     /// Simulates the specified pixels in parallel.
     /// Returns a vector of pixels in the same order they were provided.
-    pub fn par_simulate_pixels(&self, pixels: &Vec<(u32, u32)>) -> Vec<(f32, f32)> {
+    pub fn par_simulate_pixels(&self, pixels: &Vec<(u32, u32)>) -> Vec<(f64, f64)> {
         pixels
             .par_iter()
             .map(|pixel| self.simulate_pixel(pixel))

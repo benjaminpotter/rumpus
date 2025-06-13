@@ -53,13 +53,13 @@ mod tests {
         let acc_size = (180. / estimate_resolution_deg) as usize;
         let mut accumulator: Vec<u32> = vec![0; acc_size];
         let image_center_px = (
-            params.sensor_size_px.0 as f32 / 2.,
-            params.sensor_size_px.1 as f32 / 2.,
+            params.sensor_size_px.0 as f64 / 2.,
+            params.sensor_size_px.1 as f64 / 2.,
         );
 
         for (i, (x, y)) in pixels
             .iter()
-            .map(|(col, row)| (*col as f32, *row as f32))
+            .map(|(col, row)| (*col as f64, *row as f64))
             .map(|(col, row)| (col - image_center_px.0, row - image_center_px.1))
             .enumerate()
         {
@@ -77,7 +77,7 @@ mod tests {
 
         // let mut writer = BufWriter::new(File::create("acc.dat").unwrap());
         // for (i, votes) in accumulator.iter().enumerate() {
-        //     let angle = (i as f32 * estimate_resolution_deg) - 90.;
+        //     let angle = (i as f64 * estimate_resolution_deg) - 90.;
         //     let _ = writeln!(writer, "{:05.5} {:05}", angle, votes);
         // }
 
@@ -89,7 +89,7 @@ mod tests {
         }
 
         // Map [0, acc_size] index to [-90.0, 90.0] estimate.
-        let azimuth_estimate_deg = ((azimuth_estimate_idx as f32) * estimate_resolution_deg) - 90.;
+        let azimuth_estimate_deg = ((azimuth_estimate_idx as f64) * estimate_resolution_deg) - 90.;
         let azimuth_deg = 45.;
         let azimuth_estimate_err = (azimuth_estimate_deg - azimuth_deg).abs();
 
