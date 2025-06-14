@@ -1,7 +1,7 @@
-use nalgebra::{Matrix3, Vector3};
+use nalgebra::{Matrix3, Rotation3, Unit, Vector3};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::fmt;
+use std::{f32::consts::PI, fmt};
 
 #[derive(Clone, Copy, Serialize, Deserialize)]
 pub struct SensorParams {
@@ -129,6 +129,12 @@ impl Sensor {
         // Trace a ray from the physical pixel location through the focal point.
         // This approach uses the pinhole camera model.
         let ray_body = phys_loc + self.focal_point_mm;
+
+        // Apply fisheye lens distortion effect.
+        // let axis = Unit::new_normalize(self.focal_point_mm.cross(&phys_loc));
+        // let angle = (phys_loc.norm() / self.focal_point_mm.norm()).atan();
+        // let lens_distortion = Rotation3::from_axis_angle(&axis, angle);
+        // let ray_body = lens_distortion * ray_body;
 
         // Transform ray from body (sensor) frame into the solar frame.
         let ray_solar = self.body_to_solar * ray_body;
