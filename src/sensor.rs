@@ -40,18 +40,19 @@ impl From<SensorParams> for Sensor {
         // Convert pixel size to mm.
         let pixel_size_mm = Vector3::new(
             params.pixel_size_um.0 / 1000.,
-            0.,
             params.pixel_size_um.1 / 1000.,
+            0.,
         );
 
         // Convert sensor size to floating point.
         let sensor_size_px = Vector3::new(
             (params.sensor_size_px.0) as f64,
-            0.,
             (params.sensor_size_px.1) as f64,
+            0.,
         );
 
-        let focal_point_mm = Vector3::new(0., params.focal_length_mm, 0.);
+        // Focal point is in the +z direction (optical axis).
+        let focal_point_mm = Vector3::new(0., 0., params.focal_length_mm);
 
         let (roll_rad, pitch_rad, yaw_rad) = (
             params.enu_pose_deg.0.to_radians(),
@@ -91,7 +92,7 @@ impl Sensor {
     /// Simulate a pixel using the Rayleigh sky model.
     pub fn simulate_pixel(&self, pixel: &(u32, u32)) -> (f64, f64) {
         // Compute physical pixel location on image sensor.
-        let pixel = Vector3::new(pixel.0 as f64, 0., pixel.1 as f64);
+        let pixel = Vector3::new(pixel.0 as f64, pixel.1 as f64, 0.);
         let pixel = pixel - self.sensor_size_px * 0.5;
         let phys_loc = self.pixel_size_mm.component_mul(&pixel);
 
@@ -104,6 +105,8 @@ impl Sensor {
         let enu_ray = enu_ray.normalize();
 
         // Compute the zenith and azimuth angles of the ray.
+        // Azimuth is CW from +Y.
+        // Zenith is angle from +Z in the plane defined by +Z and the ray.
         let ray_azimuth_rad = enu_ray.x.atan2(enu_ray.y);
         let ray_zenith_rad = enu_ray.z.acos();
 

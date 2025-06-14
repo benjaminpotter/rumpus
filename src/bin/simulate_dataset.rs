@@ -81,7 +81,7 @@ fn main() {
 
     let output_dir = Path::new("assets/img");
     for angle in 0..10 {
-        let enu_pose_deg = (90., 0., angle as f64);
+        let enu_pose_deg = (0., 0., angle as f64);
         let sensor: Sensor = SensorParams {
             pixel_size_um: (3.45, 3.45),
             sensor_size_px,
