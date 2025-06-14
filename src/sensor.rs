@@ -11,7 +11,8 @@ pub struct SensorParams {
     pub sensor_size_px: (u32, u32),
     pub focal_length_mm: f64,
 
-    /// Follows east, north, up reference frame.
+    /// Follows ENU reference frame.
+    /// Ex. (0, 0, 45): the image sensor is parallel with the horizon plane and rotated by 45 deg about the +Z or UP axis.
     pub enu_pose_deg: (f64, f64, f64),
 
     pub lon: f64,
@@ -122,6 +123,21 @@ impl Sensor {
             / (ray_azimuth_rad - solar_azimuth_rad).sin()
             / solar_zenith_rad.sin())
         .atan();
+
+        // let z = solar_zenith_rad.cos();
+        // let a = (1. - z.powf(2.)).sqrt();
+        // let x = a * solar_azimuth_rad.sin();
+        // let y = a * solar_azimuth_rad.cos();
+        // let enu_solar_vector = Vector3::new(x, y, z);
+        // let enu_e_vector = enu_ray.cross(&enu_solar_vector).normalize();
+        // let body_e_vector = self.enu_to_body * enu_e_vector;
+
+        // let beta_rad = phys_loc.y.atan2(phys_loc.x);
+        // let z_mer = -body_ray;
+        // let y_mer = Vector3::new(-beta_rad.sin(), beta_rad.cos(), 0.);
+        // let x_mer = y_mer.cross(&z_mer);
+
+        // let aop_rad = (body_e_vector.dot(&y_mer) / body_e_vector.dot(&x_mer)).atan();
 
         (aop_rad.to_degrees(), dop)
     }

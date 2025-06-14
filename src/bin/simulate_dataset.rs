@@ -87,8 +87,9 @@ fn main() {
             sensor_size_px,
             focal_length_mm: 3.5,
             enu_pose_deg,
-            lat: 44.2187,
-            lon: -76.4747,
+            // RMC Parade Square
+            lat: 44.13474,
+            lon: -76.28020,
             time,
         }
         .into();
@@ -116,5 +117,6 @@ fn main() {
             sensor_size_px.1,
             image::ExtendedColorType::Rgb8,
         );
+        println!("Write angle {} to image", angle);
     }
 }
