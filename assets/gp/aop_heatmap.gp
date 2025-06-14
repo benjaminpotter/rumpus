@@ -1,6 +1,6 @@
 
 set terminal pngcairo
-set output "aop.png"
+set output "assets/img/aop.png"
 
 set title "Angle of Polarization"
 
@@ -13,5 +13,5 @@ set xlabel "Roll"
 set ylabel "Pitch"
 
 set view map
-splot 'aop.dat' matrix with image title ''
+splot 'assets/dat/aop.dat' matrix with image title ''
 
