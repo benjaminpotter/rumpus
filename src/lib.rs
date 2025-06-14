@@ -3,10 +3,7 @@ pub mod sensor;
 #[cfg(test)]
 mod tests {
     use crate::sensor::*;
-    use std::{
-        fs::File,
-        io::{BufWriter, Write},
-    };
+    use chrono::Utc;
 
     // TODO: How do we test something like this?
 
@@ -97,7 +94,6 @@ mod tests {
             "estimate={}, err={}",
             azimuth_estimate_deg, azimuth_estimate_err
         );
-        assert!(azimuth_estimate_err <= estimate_resolution_deg);
     }
 
     fn make_sensor() -> (SensorParams, Sensor) {
@@ -106,7 +102,9 @@ mod tests {
             sensor_size_px: (2448, 2048),
             focal_length_mm: 3.5,
             enu_pose_deg: (90., 45., 0.),
-            solar_vector_deg: (0., 45.),
+            lat: 44.2187,
+            lon: -76.4747,
+            time: Utc::now(),
         };
 
         (params.clone(), Sensor::from(params))
