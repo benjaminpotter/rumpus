@@ -87,6 +87,13 @@ impl IntensityImage {
     }
 
     /// Convert an owned intensity image to a StokesImage by computing Stokes vectors.
+    ///
+    /// The Stokes vectors are computed by:
+    /// ```text
+    /// S_0 = (I_0 + I_45 + I_90 + I_135) / 2
+    /// S_1 = I_0 - I_90
+    /// S_2 = I_45 - I_135
+    /// ```
     pub fn into_stokes_image(self) -> StokesImage {
         let dims = self.dims;
         let frame = StokesReferenceFrame::Sensor;
