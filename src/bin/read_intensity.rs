@@ -1,5 +1,5 @@
 use clap::Parser;
-use image::{GrayImage, ImageBuffer, ImageReader, Rgb};
+use image::{ImageBuffer, ImageReader, Rgb};
 use rayon::prelude::*;
 
 /// Pattern of linear polarizers on the CCD.

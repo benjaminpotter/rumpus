@@ -5,14 +5,19 @@ use serde::{Deserialize, Serialize};
 use spa::{SolarPos, StdFloatOps};
 use std::fmt;
 
+/// A serializable data structure used to construct a simulated sensor.
 #[derive(Clone, Copy, Serialize, Deserialize)]
 pub struct SensorParams {
+    /// Size of a pixel on the simulated sensor in micrometers.
     pub pixel_size_um: (f64, f64),
+
+    /// The dimensions of the simulated sensor in number of pixels.
     pub sensor_size_px: (u32, u32),
+
+    /// The distance between the simulated sensor and the focal point along the +Z axis.
     pub focal_length_mm: f64,
 
-    /// Follows ENU reference frame.
-    /// Ex. (0, 0, 45): the image sensor is parallel with the horizon plane and rotated by 45 deg about the +Z or UP axis.
+    /// The Euler angles of the simulated sensor in the ENU reference frame.
     pub enu_pose_deg: (f64, f64, f64),
 
     pub lon: f64,
