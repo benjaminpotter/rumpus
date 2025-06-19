@@ -1,3 +1,11 @@
+#![warn(missing_docs)]
+
+//! # Rust Compass
+
+#[allow(missing_docs)]
+pub mod error;
+
+pub mod image;
 pub mod sensor;
 
 #[cfg(test)]
