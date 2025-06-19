@@ -46,6 +46,10 @@ impl IntensityImage {
     /// | w(h-1) |
     /// ```
     pub fn from_bytes(width: u32, height: u32, bytes: &[u8]) -> Result<Self, Error> {
+        // TODO:
+        // - Allow dimensions to mismatch the bytes and do interpolation.
+        // - Maybe make another function for users that want this functionality.
+
         let dims = (
             width
                 .checked_div(2)
