@@ -13,7 +13,7 @@ use std::{
 #[command(version, about, long_about = None)]
 struct Args {
     #[arg(short, long)]
-    params: String,
+    params: Option<PathBuf>,
 
     #[arg(short, long)]
     output: PathBuf,
@@ -22,13 +22,17 @@ struct Args {
 fn main() {
     let args = Args::parse();
 
-    // Read sensor parameters from config file.
-    let mut file = File::open(args.params).unwrap();
-    let mut serialized = String::new();
-    file.read_to_string(&mut serialized).unwrap();
-
     // Construct sensor from parameters.
-    let params: SensorParams = serde_json::from_str(&serialized).unwrap();
+    let params = match args.params {
+        Some(path) => {
+            // Read sensor parameters from config file.
+            let mut file = File::open(path).unwrap();
+            let mut serialized = String::new();
+            file.read_to_string(&mut serialized).unwrap();
+            serde_json::from_str(&serialized).unwrap()
+        }
+        None => SensorParams::default(),
+    };
     let sensor = Sensor::from(params);
 
     // Define pixel range as full sensor.

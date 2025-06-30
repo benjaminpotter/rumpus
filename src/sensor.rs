@@ -31,6 +31,23 @@ impl fmt::Display for SensorParams {
     }
 }
 
+impl Default for SensorParams {
+    fn default() -> Self {
+        Self {
+            pixel_size_um: (3.45, 3.45),
+            sensor_size_px: (2448, 2048),
+            focal_length_mm: 8.0,
+            enu_pose_deg: (0., 0., 0.),
+            lat: 44.2187,
+            lon: -76.4747,
+            // TODO: Maybe do not use the UTC now?
+            time: "2025-06-13T16:26:47+00:00"
+                .parse::<DateTime<Utc>>()
+                .unwrap(),
+        }
+    }
+}
+
 /// Represents a simulated sensor in the world.
 pub struct Sensor {
     pixel_size_mm: Vector3<f64>,

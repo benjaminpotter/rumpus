@@ -99,16 +99,7 @@ mod tests {
     }
 
     fn make_sensor() -> (SensorParams, Sensor) {
-        let params = SensorParams {
-            pixel_size_um: (3.45, 3.45),
-            sensor_size_px: (2448, 2048),
-            focal_length_mm: 3.5,
-            enu_pose_deg: (90., 45., 0.),
-            lat: 44.2187,
-            lon: -76.4747,
-            time: Utc::now(),
-        };
-
+        let params = SensorParams::default();
         (params.clone(), Sensor::from(params))
     }
 }
