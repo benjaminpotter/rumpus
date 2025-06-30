@@ -32,8 +32,7 @@ fn main() {
         .into();
 
         let simulated_image = sensor.par_simulate_pixels(&pixels);
-        let size_bytes = (sensor_size_px.0 * sensor_size_px.1 * 3) as usize;
-        let mut bytes: Vec<u8> = simulated_image
+        let bytes: Vec<u8> = simulated_image
             .par_iter()
             .map(|(aop, _)| to_rgb(*aop, -90., 90.).unwrap())
             .flatten()

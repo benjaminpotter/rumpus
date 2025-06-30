@@ -1,9 +1,12 @@
 use chrono::Utc;
 use clap::Parser;
-use rumpus::sensor::*;
+use rayon::prelude::*;
+use rumpus::{image::to_rgb, sensor::*};
 use std::{
+    ffi::OsStr,
     fs::File,
     io::{BufWriter, Read, Write},
+    path::PathBuf,
 };
 
 #[derive(Parser)]
@@ -12,8 +15,8 @@ struct Args {
     #[arg(short, long)]
     params: String,
 
-    #[arg(short, long, default_value = "aop.dat")]
-    output: String,
+    #[arg(short, long)]
+    output: PathBuf,
 }
 
 fn main() {
@@ -42,22 +45,54 @@ fn main() {
     // Simulate AoP and DoP information.
     let simulated_image = sensor.par_simulate_pixels(&pixels);
 
-    // Write simulated output to file.
-    // Each call to write! on the raw file makes a system call.
-    // Using BufWriter drastically speeds up the file dump.
-    let mut output_file = BufWriter::new(File::create(args.output).unwrap());
+    match args
+        .output
+        .as_path()
+        .extension()
+        .map(|os_str: &OsStr| os_str.to_str())
+        .unwrap()
+    {
+        Some("png") => {
+            println!("writing to PNG image at {}", &args.output.display());
 
-    // Write metadata as a comment.
-    let _ = writeln!(output_file, "# Angle of Polarization Datafile");
-    let _ = writeln!(output_file, "# generated_at={}", Utc::now().to_rfc3339());
-    let _ = writeln!(output_file, "");
+            // Convert to an image buffer.
+            let bytes: Vec<u8> = simulated_image
+                .par_iter()
+                .map(|(aop, _)| to_rgb(*aop, -90., 90.).unwrap())
+                .flatten()
+                .collect();
 
-    for row in 0..params.sensor_size_px.1 {
-        for col in 0..params.sensor_size_px.0 {
-            let idx = (row * params.sensor_size_px.0 + col) as usize;
-            let (aop, _) = simulated_image[idx];
-            let _ = write!(output_file, "{:5} ", aop);
+            // Write to a PNG file.
+            let _ = image::save_buffer(
+                &args.output,
+                &bytes,
+                params.sensor_size_px.0,
+                params.sensor_size_px.1,
+                image::ExtendedColorType::Rgb8,
+            );
         }
-        let _ = write!(output_file, "\n");
+        Some("dat") => {
+            println!("writing to DAT file at {}", &args.output.display());
+
+            // Write simulated output to file.
+            // Each call to write! on the raw file makes a system call.
+            // Using BufWriter drastically speeds up the file dump.
+            let mut output_file = BufWriter::new(File::create(&args.output).unwrap());
+
+            // Write metadata as a comment.
+            let _ = writeln!(output_file, "# Angle of Polarization Datafile");
+            let _ = writeln!(output_file, "# generated_at={}", Utc::now().to_rfc3339());
+            let _ = writeln!(output_file, "");
+
+            for row in 0..params.sensor_size_px.1 {
+                for col in 0..params.sensor_size_px.0 {
+                    let idx = (row * params.sensor_size_px.0 + col) as usize;
+                    let (aop, _) = simulated_image[idx];
+                    let _ = write!(output_file, "{:5} ", aop);
+                }
+                let _ = write!(output_file, "\n");
+            }
+        }
+        _ => unimplemented!(),
     }
 }

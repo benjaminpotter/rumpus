@@ -80,12 +80,6 @@ mod tests {
             }
         }
 
-        // let mut writer = BufWriter::new(File::create("acc.dat").unwrap());
-        // for (i, votes) in accumulator.iter().enumerate() {
-        //     let angle = (i as f64 * estimate_resolution_deg) - 90.;
-        //     let _ = writeln!(writer, "{:05.5} {:05}", angle, votes);
-        // }
-
         let mut azimuth_estimate_idx = 0;
         for (i, votes) in accumulator.iter().enumerate().skip(1) {
             if accumulator[azimuth_estimate_idx] < *votes {
