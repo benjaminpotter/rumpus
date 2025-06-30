@@ -48,6 +48,12 @@ impl Default for SensorParams {
     }
 }
 
+impl SensorParams {
+    pub fn num_pixels(&self) -> usize {
+        (self.sensor_size_px.0 * self.sensor_size_px.1) as usize
+    }
+}
+
 /// Represents a simulated sensor in the world.
 pub struct Sensor {
     pixel_size_mm: Vector3<f64>,

@@ -12,9 +12,15 @@ use std::{
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 struct Args {
+    /// Optional path to JSON formatted SensorParams
+    ///
+    /// If not provided, the SensorParams::default() will be used instead.
     #[arg(short, long)]
     params: Option<PathBuf>,
 
+    /// File path for the simulated output.
+    ///
+    /// The output format is inferred from the file extension.
     #[arg(short, long)]
     output: PathBuf,
 }
