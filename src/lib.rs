@@ -1,6 +1,6 @@
 #![warn(missing_docs)]
 
-//! # Rust Compass
+//! Skylight Polarization Utilities
 
 #[allow(missing_docs)]
 pub mod error;
