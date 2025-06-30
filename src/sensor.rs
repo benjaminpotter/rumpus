@@ -52,6 +52,24 @@ impl SensorParams {
     pub fn num_pixels(&self) -> usize {
         (self.sensor_size_px.0 * self.sensor_size_px.1) as usize
     }
+
+    pub fn pixels(&self) -> Vec<(u32, u32)> {
+        let width = self.sensor_size_px.0;
+        let height = self.sensor_size_px.1;
+
+        (0..height)
+            .into_iter()
+            .map(|row| (0..width).into_iter().map(move |col| (col, row)))
+            .flatten()
+            .collect()
+    }
+
+    pub fn to_pose(&self, pose_deg: (f64, f64, f64)) -> Self {
+        let mut copy = self.clone();
+        copy.enu_pose_deg = pose_deg;
+
+        copy
+    }
 }
 
 /// Represents a simulated sensor in the world.

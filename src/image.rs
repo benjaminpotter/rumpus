@@ -185,6 +185,19 @@ impl StokesImage {
             .map(|dop| dop.clamp(0., max))
             .collect()
     }
+
+    /// Compute a vector of (AoP, DoP) tuples.
+    pub fn par_compute_aop_dop_image(&self, dop_max: f64) -> Vec<(f64, f64)> {
+        self.pixels
+            .par_iter()
+            .map(|sv| {
+                (
+                    (sv[2].atan2(sv[1]) / 2.).to_degrees(),
+                    ((sv[1].powf(2.) + sv[2].powf(2.)).sqrt() / sv[0]).clamp(0., dop_max),
+                )
+            })
+            .collect()
+    }
 }
 
 /// Map an f64 on the interval [x_min, x_max] to an RGB color.
@@ -248,4 +261,9 @@ pub fn to_rgb(x: f64, x_min: f64, x_max: f64) -> Option<[u8; 3]> {
     .unwrap();
 
     Some([r, g, b])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
 }

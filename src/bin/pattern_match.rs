@@ -1,0 +1,122 @@
+use chrono::{TimeZone, Utc};
+use clap::Parser;
+use image::ImageReader;
+use rayon::prelude::*;
+use rumpus::{
+    image::{to_rgb, IntensityImage, StokesReferenceFrame},
+    sensor::*,
+};
+use std::fs::File;
+use std::io::{BufWriter, Read, Write};
+use std::path::PathBuf;
+
+#[derive(Parser)]
+#[command(version, about, long_about = None)]
+struct Args {
+    #[arg(long)]
+    image: PathBuf,
+
+    #[arg(long)]
+    root_params: PathBuf,
+
+    #[arg(short, long)]
+    output: PathBuf,
+
+    #[arg(long, default_value_t = 0.1)]
+    dop_min: f64,
+
+    #[arg(long, default_value_t = 0.5)]
+    dop_max: f64,
+
+    #[arg(long, default_value_t = 0.05)]
+    yaw_resolution: f64,
+}
+
+fn main() {
+    let args = Args::parse();
+
+    println!("reading from image at '{}'", &args.image.display());
+
+    let image = ImageReader::open(&args.image)
+        .unwrap()
+        .decode()
+        .unwrap()
+        .into_luma8();
+
+    let (width, height) = image.dimensions();
+    let intensity_image = IntensityImage::from_bytes(width, height, &image.into_raw()).unwrap();
+
+    let stokes_image = intensity_image
+        .into_stokes_image()
+        .par_transform_frame(StokesReferenceFrame::Pixel);
+
+    println!("reading root params from '{}'", &args.root_params.display());
+
+    // Read sensor parameters from config file.
+    let mut file = File::open(&args.root_params).unwrap();
+    let mut serialized = String::new();
+    file.read_to_string(&mut serialized).unwrap();
+    let root_params: SensorParams = serde_json::from_str(&serialized).unwrap();
+
+    let count = 360.0 / args.yaw_resolution;
+    println!(
+        "creating {} simulated sensors for {} deg resolution",
+        count, args.yaw_resolution
+    );
+
+    let yaws: Vec<f64> = (0..count as usize)
+        .map(|x| x as f64 / count * 360.0)
+        .collect();
+
+    let sensors: Vec<Sensor> = yaws
+        .iter()
+        .map(|yaw| root_params.to_pose((0., 0., *yaw)))
+        .map(|params| Sensor::from(params))
+        .collect();
+
+    let pixels = root_params.pixels();
+    let aop_dop_image = stokes_image.par_compute_aop_dop_image(args.dop_max);
+
+    let pattern: Vec<((u32, u32), f64, f64)> = pixels
+        .into_iter()
+        .zip(aop_dop_image)
+        .map(|(pixel, (aop, dop))| (pixel, aop, dop))
+        // Remove pixels with DoP below threshold.
+        .filter(|(_, _, dop)| *dop > args.dop_min)
+        .map(|(pixel, aop, dop)| (pixel, aop, 1. / dop))
+        .collect();
+
+    let scores: Vec<f64> = sensors
+        .par_iter()
+        .map(|sensor| {
+            pattern
+                .par_iter()
+                .map(|(pixel, aop, weight)| {
+                    let (s_aop, _) = sensor.simulate_pixel(pixel);
+                    (aop - s_aop).powf(2.) * weight
+                })
+                .sum()
+        })
+        .collect();
+
+    let (index, _) = scores
+        .iter()
+        .enumerate()
+        .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+        .unwrap();
+
+    println!("minimum difference occurs at '{}' deg", yaws[index]);
+    println!("writing to DAT file at '{}'", &args.output.display());
+
+    let mut output_file = BufWriter::new(File::create(&args.output).unwrap());
+
+    // Write metadata as a comment.
+    let _ = writeln!(output_file, "# Difference Score for Varying Yaw Angle");
+    let _ = writeln!(output_file, "# generated_at={}", Utc::now().to_rfc3339());
+    let _ = writeln!(output_file, "# yaw_estimate={}", yaws[index]);
+    let _ = writeln!(output_file, "");
+
+    for (yaw, score) in yaws.iter().zip(scores) {
+        let _ = writeln!(output_file, "{:010.2} {:020.5}", yaw, score);
+    }
+}
