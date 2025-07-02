@@ -1,9 +1,8 @@
-use chrono::{TimeZone, Utc};
 use clap::Parser;
 use image::ImageReader;
 use rayon::prelude::*;
 use rumpus::{
-    image::{to_rgb, IntensityImage, StokesReferenceFrame},
+    image::{IntensityImage, StokesReferenceFrame},
     sensor::*,
 };
 use std::fs::File;
@@ -15,6 +14,12 @@ use std::path::PathBuf;
 struct Args {
     #[arg(long)]
     image: PathBuf,
+
+    #[arg(long)]
+    timestamp: u64,
+
+    #[arg(long)]
+    sequence_number: u64,
 
     #[arg(long)]
     root_params: PathBuf,
@@ -35,8 +40,6 @@ struct Args {
 fn main() {
     let args = Args::parse();
 
-    println!("reading from image at '{}'", &args.image.display());
-
     let image = ImageReader::open(&args.image)
         .unwrap()
         .decode()
@@ -50,8 +53,6 @@ fn main() {
         .into_stokes_image()
         .par_transform_frame(StokesReferenceFrame::Pixel);
 
-    println!("reading root params from '{}'", &args.root_params.display());
-
     // Read sensor parameters from config file.
     let mut file = File::open(&args.root_params).unwrap();
     let mut serialized = String::new();
@@ -59,10 +60,6 @@ fn main() {
     let root_params: SensorParams = serde_json::from_str(&serialized).unwrap();
 
     let count = 360.0 / args.yaw_resolution;
-    println!(
-        "creating {} simulated sensors for {} deg resolution",
-        count, args.yaw_resolution
-    );
 
     let yaws: Vec<f64> = (0..count as usize)
         .map(|x| x as f64 / count * 360.0)
@@ -105,18 +102,20 @@ fn main() {
         .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
         .unwrap();
 
-    println!("minimum difference occurs at '{}' deg", yaws[index]);
-    println!("writing to DAT file at '{}'", &args.output.display());
-
     let mut output_file = BufWriter::new(File::create(&args.output).unwrap());
 
-    // Write metadata as a comment.
-    let _ = writeln!(output_file, "# Difference Score for Varying Yaw Angle");
-    let _ = writeln!(output_file, "# generated_at={}", Utc::now().to_rfc3339());
-    let _ = writeln!(output_file, "# yaw_estimate={}", yaws[index]);
-    let _ = writeln!(output_file, "");
+    // Write header.
+    let _ = writeln!(
+        output_file,
+        "image_file_stem,timestamp,sequence_number,yaw,score"
+    );
 
-    for (yaw, score) in yaws.iter().zip(scores) {
-        let _ = writeln!(output_file, "{:010.2} {:020.5}", yaw, score);
-    }
+    let image_file_stem = &args.image.file_stem().unwrap().to_str().unwrap();
+
+    // Write data.
+    let _ = writeln!(
+        output_file,
+        "{},{},{},{:010.2},{:020.5}",
+        image_file_stem, &args.timestamp, &args.sequence_number, yaws[index], scores[index]
+    );
 }
