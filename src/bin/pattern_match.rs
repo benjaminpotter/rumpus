@@ -49,9 +49,10 @@ fn main() {
     let (width, height) = image.dimensions();
     let intensity_image = IntensityImage::from_bytes(width, height, &image.into_raw()).unwrap();
 
-    let stokes_image = intensity_image
+    let (aop_image, dop_image) = intensity_image
         .into_stokes_image()
-        .par_transform_frame(StokesReferenceFrame::Pixel);
+        .par_transform_frame(StokesReferenceFrame::Pixel)
+        .into_aop_dop_image();
 
     // Read sensor parameters from config file.
     let mut file = File::open(&args.root_params).unwrap();
@@ -72,12 +73,12 @@ fn main() {
         .collect();
 
     let pixels = root_params.pixels();
-    let aop_dop_image = stokes_image.par_compute_aop_dop_image(args.dop_max);
 
     let pattern: Vec<((u32, u32), f64, f64)> = pixels
         .into_iter()
-        .zip(aop_dop_image)
-        .map(|(pixel, (aop, dop))| (pixel, aop, dop))
+        .zip(aop_image.into_vec().into_iter())
+        .zip(dop_image.into_vec().into_iter())
+        .map(|((pixel, aop), dop)| (pixel, aop, dop))
         // Remove pixels with DoP below threshold.
         .filter(|(_, _, dop)| *dop > args.dop_min)
         .map(|(pixel, aop, dop)| (pixel, aop, 1. / dop))

@@ -99,7 +99,7 @@ impl IntensityImage {
         let frame = StokesReferenceFrame::Sensor;
         let pixels: Vec<[f64; 3]> = self
             .metapixels
-            .into_iter()
+            .par_iter()
             .map(|mp| {
                 [
                     (mp[0] + mp[1] + mp[2] + mp[3]) / 2.,
@@ -118,7 +118,7 @@ impl IntensityImage {
 }
 
 /// Describes the reference frame for the S_1 and S_2 Stokes parameters.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum StokesReferenceFrame {
     /// S_1 and S_2 parameters are with reference to the 0 degree linear polarizer of the image sensor.
     Sensor,
@@ -170,33 +170,94 @@ impl StokesImage {
         self
     }
 
-    pub fn par_compute_aop_image(&self) -> Vec<f64> {
-        self.pixels
-            .par_iter()
-            .map(|sv| sv[2].atan2(sv[1]) / 2.)
-            .map(|aop| aop.to_degrees())
-            .collect()
+    /// Returns a reference to a Stokes vector if `pixel` is within `self.dims`, otherwise returns None.
+    fn get_pixel(&self, pixel: (u32, u32)) -> Option<&[f64; 3]> {
+        let index = (pixel.1 * self.dims.0 + pixel.0) as usize;
+        self.pixels.get(index)
     }
 
-    pub fn par_compute_dop_image(&self, max: f64) -> Vec<f64> {
-        self.pixels
-            .par_iter()
-            .map(|sv| (sv[1].powf(2.) + sv[2].powf(2.)).sqrt() / sv[0])
-            .map(|dop| dop.clamp(0., max))
-            .collect()
+    /// Compute an AoP from a Stokes vector.
+    fn sv_to_aop(sv: &[f64; 3]) -> f64 {
+        (sv[2].atan2(sv[1]) / 2.).to_degrees()
     }
 
-    /// Compute a vector of (AoP, DoP) tuples.
-    pub fn par_compute_aop_dop_image(&self, dop_max: f64) -> Vec<(f64, f64)> {
-        self.pixels
+    /// Compute a DoP from a Stokes vector.
+    fn sv_to_dop(sv: &[f64; 3]) -> f64 {
+        (sv[1].powf(2.) + sv[2].powf(2.)).sqrt() / sv[0]
+    }
+
+    /// Returns an AoP if `pixel` is within `self.dims`, otherwise returns None.
+    fn aop_at(&self, pixel: (u32, u32)) -> Option<f64> {
+        let sv = self.get_pixel(pixel)?;
+        Some(StokesImage::sv_to_aop(sv))
+    }
+
+    /// Returns a DoP if `pixel` is within `self.dims`, otherwise returns None.
+    fn dop_at(&self, pixel: (u32, u32)) -> Option<f64> {
+        let sv = self.get_pixel(pixel)?;
+        Some(StokesImage::sv_to_dop(sv))
+    }
+
+    /// Convert an owned Stokes image to a AopDopImage by computing AoP and DoP values.
+    pub fn into_aop_dop_image(self) -> (AopImage, DopImage) {
+        let frame = self.frame.clone();
+        let dims = self.dims.clone();
+        let (aop_pixels, dop_pixels): (Vec<_>, Vec<_>) = self
+            .pixels
             .par_iter()
-            .map(|sv| {
-                (
-                    (sv[2].atan2(sv[1]) / 2.).to_degrees(),
-                    ((sv[1].powf(2.) + sv[2].powf(2.)).sqrt() / sv[0]).clamp(0., dop_max),
-                )
-            })
-            .collect()
+            .map(|sv| (StokesImage::sv_to_aop(sv), StokesImage::sv_to_dop(sv)))
+            .unzip();
+
+        (
+            AopImage {
+                pixels: aop_pixels,
+                frame,
+                dims,
+            },
+            DopImage {
+                pixels: dop_pixels,
+                dims,
+            },
+        )
+    }
+}
+
+pub struct AopImage {
+    pixels: Vec<f64>,
+    frame: StokesReferenceFrame,
+    dims: (u32, u32),
+}
+
+impl AopImage {
+    pub fn dimensions(&self) -> (u32, u32) {
+        self.dims
+    }
+
+    pub fn as_slice(&self) -> &[f64] {
+        self.pixels.as_slice()
+    }
+
+    pub fn into_vec(self) -> Vec<f64> {
+        self.pixels
+    }
+}
+
+pub struct DopImage {
+    pixels: Vec<f64>,
+    dims: (u32, u32),
+}
+
+impl DopImage {
+    pub fn dimensions(&self) -> (u32, u32) {
+        self.dims
+    }
+
+    pub fn as_slice(&self) -> &[f64] {
+        self.pixels.as_slice()
+    }
+
+    pub fn into_vec(self) -> Vec<f64> {
+        self.pixels
     }
 }
 
