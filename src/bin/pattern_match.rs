@@ -84,20 +84,26 @@ fn main() {
         .map(|(pixel, aop, dop)| (pixel, aop, 1. / dop))
         .collect();
 
-    let scores: Vec<f64> = sensors
+    let losses: Vec<f64> = sensors
         .par_iter()
         .map(|sensor| {
             pattern
                 .par_iter()
                 .map(|(pixel, aop, weight)| {
                     let (s_aop, _) = sensor.simulate_pixel(pixel);
-                    (aop - s_aop).powf(2.) * weight
+                    let mut diff = aop - s_aop;
+                    if diff < -90. {
+                        diff += 180.;
+                    } else if diff > 90. {
+                        diff -= 180.;
+                    }
+                    diff.powf(2.) * weight
                 })
                 .sum()
         })
         .collect();
 
-    let (index, _) = scores
+    let (index, _) = losses
         .iter()
         .enumerate()
         .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
@@ -117,6 +123,6 @@ fn main() {
     let _ = writeln!(
         output_file,
         "{},{},{},{:010.2},{:020.5}",
-        image_file_stem, &args.timestamp, &args.sequence_number, yaws[index], scores[index]
+        image_file_stem, &args.timestamp, &args.sequence_number, yaws[index], losses[index]
     );
 }
