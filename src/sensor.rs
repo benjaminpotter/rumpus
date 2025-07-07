@@ -82,8 +82,8 @@ pub struct Sensor {
     solar_vector_rad: (f64, f64),
 }
 
-impl From<SensorParams> for Sensor {
-    fn from(params: SensorParams) -> Self {
+impl From<&SensorParams> for Sensor {
+    fn from(params: &SensorParams) -> Self {
         // Convert pixel size to mm.
         let pixel_size_mm = Vector3::new(
             params.pixel_size_um.0 / 1000.,
