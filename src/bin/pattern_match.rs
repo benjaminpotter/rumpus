@@ -29,9 +29,6 @@ struct Args {
     #[arg(short, long)]
     output: Option<PathBuf>,
 
-    #[arg(long)]
-    losses: Option<PathBuf>,
-
     #[arg(long, default_value_t = 0.02)]
     dop_min: f64,
 
@@ -74,7 +71,7 @@ fn main() {
     };
 
     let (width, height) = raw_image.dimensions();
-    let losses = pattern_match(
+    let (estimated_sensor_params, estimate_loss) = pattern_match(
         &raw_image.into_raw(),
         width,
         height,
@@ -84,30 +81,27 @@ fn main() {
         root_sensor_params,
     );
 
-    if let Some(path) = &args.losses {
-        let mut losses_file = BufWriter::new(File::create(&path).unwrap());
-        let _ = writeln!(losses_file, "roll,pitch,yaw,loss");
-        for (sensor_params, loss) in losses.iter() {
-            let _ = writeln!(
-                losses_file,
-                "{:010.2},{:010.2},{:010.2},{:020.5}",
-                sensor_params.enu_pose_deg.0,
-                sensor_params.enu_pose_deg.1,
-                sensor_params.enu_pose_deg.2,
-                loss
-            );
-        }
+    // Storing the losses requires >150GB of memory.
+    // Alternatively, we could write to disk during the algorithm.
+    // if let Some(path) = &args.losses {
+    //     let mut losses_file = BufWriter::new(File::create(&path).unwrap());
+    //     let _ = writeln!(losses_file, "roll,pitch,yaw,loss");
+    //     for (sensor_params, loss) in losses.iter() {
+    //         let _ = writeln!(
+    //             losses_file,
+    //             "{:010.2},{:010.2},{:010.2},{:020.5}",
+    //             sensor_params.enu_pose_deg.0,
+    //             sensor_params.enu_pose_deg.1,
+    //             sensor_params.enu_pose_deg.2,
+    //             loss
+    //         );
+    //     }
 
-        info!(
-            path = &path.display().to_string(),
-            "wrote all losses to csv"
-        );
-    }
-
-    let (estimated_sensor_params, estimate_loss) = losses
-        .iter()
-        .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
-        .unwrap();
+    //     info!(
+    //         path = &path.display().to_string(),
+    //         "wrote all losses to csv"
+    //     );
+    // }
 
     let image_file_stem = &args.image.file_stem().unwrap().to_str().unwrap();
     let timestamp: String = match args.timestamp {
@@ -153,28 +147,13 @@ fn pattern_match(
     dop_max: f64,
     angle_resolution: f64,
     root_sensor_params: SensorParams,
-) -> Vec<(SensorParams, f64)> {
+) -> (SensorParams, f64) {
     let intensity_image = IntensityImage::from_bytes(width, height, bytes).unwrap();
     let (aop_image, dop_image) = intensity_image
         .into_stokes_image()
         .par_transform_frame(StokesReferenceFrame::Pixel)
         .into_aop_dop_image();
     let (aop_width, aop_height) = aop_image.dimensions();
-
-    let yaws: Vec<f64> = linspace(0.0..360.0, angle_resolution);
-    let pitches: Vec<f64> = linspace(-15.0..=15.0, angle_resolution);
-    let rolls: Vec<f64> = linspace(-15.0..=15.0, angle_resolution);
-
-    let mut sensor_params: Vec<SensorParams> = Vec::new();
-    for i in 0..yaws.len() {
-        for j in 0..pitches.len() {
-            for k in 0..rolls.len() {
-                let pose = (rolls[k], pitches[j], yaws[i]);
-                sensor_params.push(root_sensor_params.to_pose(pose));
-            }
-        }
-    }
-    info!("created {} simulated sensors", sensor_params.len());
 
     // Filter AoP by DoP to create pattern.
     let pixels = root_sensor_params.pixels();
@@ -202,28 +181,43 @@ fn pattern_match(
         num_pixels, percent_extracted
     );
 
-    sensor_params
-        .into_par_iter()
-        .map(|sensor_params| {
-            let sensor: Sensor = (&sensor_params).into();
-            let loss = pattern
-                .par_iter()
-                .map(|(pixel, aop, weight)| {
-                    let (s_aop, _) = sensor.simulate_pixel(pixel);
-                    let mut diff = aop - s_aop;
-                    if diff < -90. {
-                        diff += 180.;
-                    } else if diff > 90. {
-                        diff -= 180.;
-                    }
-                    diff.powf(2.) * weight
-                })
-                .sum::<f64>()
-                / num_pixels;
+    let yaws: Vec<f64> = linspace(0.0..360.0, angle_resolution);
+    let pitches: Vec<f64> = linspace(-15.0..=15.0, angle_resolution);
+    let rolls: Vec<f64> = linspace(-15.0..=15.0, angle_resolution);
 
-            (sensor_params, loss)
-        })
-        .collect()
+    let mut estimate: Option<(SensorParams, f64)> = None;
+    for i in 0..yaws.len() {
+        for j in 0..pitches.len() {
+            for k in 0..rolls.len() {
+                let sensor_params = root_sensor_params.to_pose((rolls[k], pitches[j], yaws[i]));
+                let sensor: Sensor = (&sensor_params).into();
+                let loss = pattern
+                    .par_iter()
+                    .map(|(pixel, aop, weight)| {
+                        let (s_aop, _) = sensor.simulate_pixel(pixel);
+                        let mut diff = aop - s_aop;
+                        if diff < -90. {
+                            diff += 180.;
+                        } else if diff > 90. {
+                            diff -= 180.;
+                        }
+                        diff.powf(2.) * weight
+                    })
+                    .sum::<f64>()
+                    / num_pixels;
+
+                if let Some((estimated_sensor_params, estimate_loss)) = estimate {
+                    if estimate_loss > loss {
+                        estimate = Some((sensor_params, loss));
+                    }
+                } else {
+                    estimate = Some((sensor_params, loss));
+                }
+            }
+        }
+    }
+
+    estimate.unwrap()
 }
 
 /// Constructs a vector of f64 between on the Range provided.
