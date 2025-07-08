@@ -6,7 +6,7 @@ use spa::{SolarPos, StdFloatOps};
 use std::fmt;
 
 /// A serializable data structure used to construct a simulated sensor.
-#[derive(Clone, Copy, Serialize, Deserialize)]
+#[derive(Clone, Copy, Serialize, Deserialize, Debug)]
 pub struct SensorParams {
     /// Size of a pixel on the simulated sensor in micrometers.
     pub pixel_size_um: (f64, f64),
