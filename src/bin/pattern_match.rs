@@ -148,16 +148,17 @@ fn pattern_match(
     angle_resolution: f64,
     root_sensor_params: SensorParams,
 ) -> (SensorParams, f64) {
-    let intensity_image = IntensityImage::from_bytes(width, height, bytes).unwrap();
-    let (aop_image, dop_image) = intensity_image
+    let (aop_image, dop_image) = IntensityImage::from_bytes(width, height, bytes)
+        .unwrap()
         .into_stokes_image()
         .par_transform_frame(StokesReferenceFrame::Pixel)
         .into_aop_dop_image();
+
     let (aop_width, aop_height) = aop_image.dimensions();
 
     // Filter AoP by DoP to create pattern.
-    let pixels = root_sensor_params.pixels();
-    let pattern: Vec<((u32, u32), f64, f64)> = pixels
+    let pattern: Vec<((u32, u32), f64, f64)> = root_sensor_params
+        .pixels()
         .into_iter()
         .zip(aop_image.into_vec().into_iter())
         .zip(
@@ -185,6 +186,9 @@ fn pattern_match(
     let pitches: Vec<f64> = linspace(-15.0..=15.0, angle_resolution);
     let rolls: Vec<f64> = linspace(-15.0..=15.0, angle_resolution);
 
+    let size_bytes = (yaws.len() + pitches.len() + rolls.len()) * 8;
+    info!("allocated {} B for sensor angles", size_bytes);
+
     let mut estimate: Option<(SensorParams, f64)> = None;
     for i in 0..yaws.len() {
         for j in 0..pitches.len() {
@@ -206,7 +210,7 @@ fn pattern_match(
                     .sum::<f64>()
                     / num_pixels;
 
-                if let Some((estimated_sensor_params, estimate_loss)) = estimate {
+                if let Some((_, estimate_loss)) = estimate {
                     if estimate_loss > loss {
                         estimate = Some((sensor_params, loss));
                     }
