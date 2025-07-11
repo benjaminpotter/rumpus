@@ -29,7 +29,7 @@ struct Args {
     #[arg(short, long)]
     output: Option<PathBuf>,
 
-    #[arg(long, default_value_t = 0.02)]
+    #[arg(long, default_value_t = 0.1)]
     dop_min: f64,
 
     #[arg(long, default_value_t = 0.5)]
@@ -71,17 +71,18 @@ fn main() {
         .into_luma8();
 
     let (width, height) = raw_image.dimensions();
-    let mms = IntensityImage::from_bytes(width, height, &raw_image.as_raw())
+    let mms: Vec<_> = IntensityImage::from_bytes(width, height, &raw_image.as_raw())
         .unwrap()
         .into_stokes_image()
         .par_transform_frame(StokesReferenceFrame::Pixel)
         .into_measurements()
         .into_iter()
         // Remove pixels with low DoP value.
-        .filter(|mm| mm.dop < args.dop_min)
+        .filter(|mm| mm.dop > args.dop_min)
         .map(|mm| mm.with_dop_max(args.dop_max))
         .collect();
 
+    info!("selected {} stokes vectors", mms.len());
     let (estimated_sensor_params, estimate_loss) =
         search(mms, args.angle_resolution, root_sensor_params);
 
@@ -141,12 +142,15 @@ fn search(
                 let sensor: Sensor = (&sensor_params).into();
                 let loss = compute_loss(sensor, &mms);
 
-                if let Some((_, min_loss)) = estimate {
-                    if min_loss > loss {
+                match estimate {
+                    Some((_, min_loss)) => {
+                        if min_loss > loss {
+                            estimate = Some((sensor_params, loss));
+                        }
+                    }
+                    None => {
                         estimate = Some((sensor_params, loss));
                     }
-                } else {
-                    estimate = Some((sensor_params, loss));
                 }
             }
         }
