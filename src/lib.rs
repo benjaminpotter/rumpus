@@ -162,6 +162,6 @@ mod tests {
 
     fn make_sensor() -> (SensorParams, Sensor) {
         let params = SensorParams::default();
-        (params.clone(), Sensor::from(params))
+        (params, Sensor::from(&params))
     }
 }

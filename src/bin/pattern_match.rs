@@ -2,7 +2,7 @@ use clap::Parser;
 use image::ImageReader;
 use rayon::prelude::*;
 use rumpus::{
-    image::{IntensityImage, StokesReferenceFrame},
+    image::{IntensityImage, Measurement, StokesReferenceFrame},
     sensor::*,
 };
 use std::fs::File;
@@ -47,12 +47,6 @@ fn main() {
     // Parse command line arguments.
     let args = Args::parse();
 
-    let raw_image = ImageReader::open(&args.image)
-        .unwrap()
-        .decode()
-        .unwrap()
-        .into_luma8();
-
     // Read sensor parameters from config file.
     let root_sensor_params: SensorParams = match args.root_sensor_params {
         Some(path_buf) => {
@@ -70,38 +64,26 @@ fn main() {
         }
     };
 
+    let raw_image = ImageReader::open(&args.image)
+        .unwrap()
+        .decode()
+        .unwrap()
+        .into_luma8();
+
     let (width, height) = raw_image.dimensions();
-    let (estimated_sensor_params, estimate_loss) = pattern_match(
-        &raw_image.into_raw(),
-        width,
-        height,
-        args.dop_min,
-        args.dop_max,
-        args.angle_resolution,
-        root_sensor_params,
-    );
+    let mms = IntensityImage::from_bytes(width, height, &raw_image.as_raw())
+        .unwrap()
+        .into_stokes_image()
+        .par_transform_frame(StokesReferenceFrame::Pixel)
+        .into_measurements()
+        .into_iter()
+        // Remove pixels with low DoP value.
+        .filter(|mm| mm.dop < args.dop_min)
+        .map(|mm| mm.with_dop_max(args.dop_max))
+        .collect();
 
-    // Storing the losses requires >150GB of memory.
-    // Alternatively, we could write to disk during the algorithm.
-    // if let Some(path) = &args.losses {
-    //     let mut losses_file = BufWriter::new(File::create(&path).unwrap());
-    //     let _ = writeln!(losses_file, "roll,pitch,yaw,loss");
-    //     for (sensor_params, loss) in losses.iter() {
-    //         let _ = writeln!(
-    //             losses_file,
-    //             "{:010.2},{:010.2},{:010.2},{:020.5}",
-    //             sensor_params.enu_pose_deg.0,
-    //             sensor_params.enu_pose_deg.1,
-    //             sensor_params.enu_pose_deg.2,
-    //             loss
-    //         );
-    //     }
-
-    //     info!(
-    //         path = &path.display().to_string(),
-    //         "wrote all losses to csv"
-    //     );
-    // }
+    let (estimated_sensor_params, estimate_loss) =
+        search(mms, args.angle_resolution, root_sensor_params);
 
     let image_file_stem = &args.image.file_stem().unwrap().to_str().unwrap();
     let timestamp: String = match args.timestamp {
@@ -124,9 +106,9 @@ fn main() {
         image_file_stem,
         timestamp,
         sequence_number,
-        estimated_sensor_params.enu_pose_deg.0,
-        estimated_sensor_params.enu_pose_deg.1,
-        estimated_sensor_params.enu_pose_deg.2,
+        estimated_sensor_params.pose.roll,
+        estimated_sensor_params.pose.pitch,
+        estimated_sensor_params.pose.yaw,
         estimate_loss,
     );
 
@@ -139,79 +121,28 @@ fn main() {
     }
 }
 
-fn pattern_match(
-    bytes: &[u8],
-    width: u32,
-    height: u32,
-    dop_min: f64,
-    dop_max: f64,
+fn search(
+    mms: Vec<Measurement>,
     angle_resolution: f64,
     root_sensor_params: SensorParams,
 ) -> (SensorParams, f64) {
-    let (aop_image, dop_image) = IntensityImage::from_bytes(width, height, bytes)
-        .unwrap()
-        .into_stokes_image()
-        .par_transform_frame(StokesReferenceFrame::Pixel)
-        .into_aop_dop_image();
-
-    let (aop_width, aop_height) = aop_image.dimensions();
-
-    // Filter AoP by DoP to create pattern.
-    let pattern: Vec<((u32, u32), f64, f64)> = root_sensor_params
-        .pixels()
-        .into_iter()
-        .zip(aop_image.into_vec().into_iter())
-        .zip(
-            dop_image
-                .into_vec()
-                .into_iter()
-                // Clamp DoP to interval [dop_min, dop_max].
-                .map(|dop| dop.clamp(dop_min, dop_max)),
-        )
-        .map(|((pixel, aop), dop)| (pixel, aop, dop))
-        // Remove pixels with DoP below threshold.
-        .filter(|(_, _, dop)| *dop > dop_min)
-        .map(|(pixel, aop, dop)| (pixel, aop, dop_max / dop))
-        .collect();
-
-    let num_pixels = pattern.len() as f64;
-    let total_pixels = (aop_width * aop_height) as f64;
-    let percent_extracted = num_pixels / total_pixels;
-    info!(
-        "extracted {} pixels ({:0.2}%) from the measured image",
-        num_pixels, percent_extracted
-    );
-
     let yaws: Vec<f64> = linspace(0.0..360.0, angle_resolution);
     let pitches: Vec<f64> = linspace(-15.0..=15.0, angle_resolution);
     let rolls: Vec<f64> = linspace(-15.0..=15.0, angle_resolution);
-
-    let size_bytes = (yaws.len() + pitches.len() + rolls.len()) * 8;
-    info!("allocated {} B for sensor angles", size_bytes);
 
     let mut estimate: Option<(SensorParams, f64)> = None;
     for i in 0..yaws.len() {
         for j in 0..pitches.len() {
             for k in 0..rolls.len() {
-                let sensor_params = root_sensor_params.to_pose((rolls[k], pitches[j], yaws[i]));
-                let sensor: Sensor = (&sensor_params).into();
-                let loss = pattern
-                    .par_iter()
-                    .map(|(pixel, aop, weight)| {
-                        let (s_aop, _) = sensor.simulate_pixel(pixel);
-                        let mut diff = aop - s_aop;
-                        if diff < -90. {
-                            diff += 180.;
-                        } else if diff > 90. {
-                            diff -= 180.;
-                        }
-                        diff.powf(2.) * weight
-                    })
-                    .sum::<f64>()
-                    / num_pixels;
+                let sensor_params = root_sensor_params
+                    .clone()
+                    .with_pose((rolls[k], pitches[j], yaws[i]).into());
 
-                if let Some((_, estimate_loss)) = estimate {
-                    if estimate_loss > loss {
+                let sensor: Sensor = (&sensor_params).into();
+                let loss = compute_loss(sensor, &mms);
+
+                if let Some((_, min_loss)) = estimate {
+                    if min_loss > loss {
                         estimate = Some((sensor_params, loss));
                     }
                 } else {
@@ -222,6 +153,25 @@ fn pattern_match(
     }
 
     estimate.unwrap()
+}
+
+fn compute_loss(sensor: Sensor, mms: &Vec<Measurement>) -> f64 {
+    mms.par_iter()
+        .map(|mm| {
+            // TODO: I want to compare Measurements using different loss functions
+            // TODO: Provide implementation on Measurement structure
+            // TODO: Make Sensor return Measurements rather than (f64, f64)s
+            let (sim, _) = sensor.simulate_pixel(&mm.pixel_location);
+            let mut diff = mm.aop - sim;
+            if diff < -90. {
+                diff += 180.;
+            } else if diff > 90. {
+                diff -= 180.;
+            }
+            diff.powf(2.) / mm.dop
+        })
+        .sum::<f64>()
+        / mms.len() as f64
 }
 
 /// Constructs a vector of f64 between on the Range provided.

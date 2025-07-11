@@ -186,78 +186,32 @@ impl StokesImage {
         (sv[1].powf(2.) + sv[2].powf(2.)).sqrt() / sv[0]
     }
 
-    /// Returns an AoP if `pixel` is within `self.dims`, otherwise returns None.
-    fn aop_at(&self, pixel: (u32, u32)) -> Option<f64> {
-        let sv = self.get_pixel(pixel)?;
-        Some(StokesImage::sv_to_aop(sv))
-    }
-
-    /// Returns a DoP if `pixel` is within `self.dims`, otherwise returns None.
-    fn dop_at(&self, pixel: (u32, u32)) -> Option<f64> {
-        let sv = self.get_pixel(pixel)?;
-        Some(StokesImage::sv_to_dop(sv))
-    }
-
-    /// Convert an owned Stokes image to a AopDopImage by computing AoP and DoP values.
-    pub fn into_aop_dop_image(self) -> (AopImage, DopImage) {
-        let frame = self.frame.clone();
-        let dims = self.dims.clone();
-        let (aop_pixels, dop_pixels): (Vec<_>, Vec<_>) = self
-            .pixels
-            .par_iter()
-            .map(|sv| (StokesImage::sv_to_aop(sv), StokesImage::sv_to_dop(sv)))
-            .unzip();
-
-        (
-            AopImage {
-                pixels: aop_pixels,
-                frame,
-                dims,
-            },
-            DopImage {
-                pixels: dop_pixels,
-                dims,
-            },
-        )
+    /// Return a vector of `Measurement` computed from Stokes.
+    pub fn into_measurements(&self) -> Vec<Measurement> {
+        (0..self.dims.1)
+            .into_iter()
+            .map(|row| (0..self.dims.0).into_iter().map(move |col| (col, row)))
+            .flatten()
+            .filter_map(|px| self.get_pixel(px).map(|sv| (px, sv)))
+            .map(|(px, sv)| Measurement {
+                pixel_location: px,
+                aop: StokesImage::sv_to_aop(&sv),
+                dop: StokesImage::sv_to_dop(&sv),
+            })
+            .collect()
     }
 }
 
-pub struct AopImage {
-    pixels: Vec<f64>,
-    frame: StokesReferenceFrame,
-    dims: (u32, u32),
+pub struct Measurement {
+    pub pixel_location: (u32, u32),
+    pub aop: f64,
+    pub dop: f64,
 }
 
-impl AopImage {
-    pub fn dimensions(&self) -> (u32, u32) {
-        self.dims
-    }
-
-    pub fn as_slice(&self) -> &[f64] {
-        self.pixels.as_slice()
-    }
-
-    pub fn into_vec(self) -> Vec<f64> {
-        self.pixels
-    }
-}
-
-pub struct DopImage {
-    pixels: Vec<f64>,
-    dims: (u32, u32),
-}
-
-impl DopImage {
-    pub fn dimensions(&self) -> (u32, u32) {
-        self.dims
-    }
-
-    pub fn as_slice(&self) -> &[f64] {
-        self.pixels.as_slice()
-    }
-
-    pub fn into_vec(self) -> Vec<f64> {
-        self.pixels
+impl Measurement {
+    pub fn with_dop_max(mut self, max: f64) -> Self {
+        self.dop = self.dop.clamp(0.0, max);
+        self
     }
 }
 

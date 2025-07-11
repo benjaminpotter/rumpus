@@ -39,7 +39,6 @@ fn main() {
         }
         None => SensorParams::default(),
     };
-    let sensor = Sensor::from(params);
 
     // Define pixel range as full sensor.
     let pixels: Vec<(u32, u32)> = (0..params.sensor_size_px.1)
@@ -53,6 +52,7 @@ fn main() {
         .collect();
 
     // Simulate AoP and DoP information.
+    let sensor = Sensor::from(&params);
     let simulated_image = sensor.par_simulate_pixels(&pixels);
 
     match args
