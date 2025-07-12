@@ -1,5 +1,7 @@
 use clap::Parser;
 use image::ImageReader;
+use rand::distr::StandardUniform;
+use rand::prelude::*;
 use rayon::prelude::*;
 use rumpus::{
     image::{IntensityImage, Measurement, StokesReferenceFrame},
@@ -7,7 +9,7 @@ use rumpus::{
 };
 use std::fs::File;
 use std::io::{BufWriter, Read, Write};
-use std::ops::{Bound, RangeBounds};
+use std::ops::{Bound, Range, RangeBounds};
 use std::path::PathBuf;
 use tracing::{error, info, warn};
 
@@ -35,8 +37,8 @@ struct Args {
     #[arg(long, default_value_t = 0.5)]
     dop_max: f64,
 
-    #[arg(long, default_value_t = 45.)]
-    angle_resolution: f64,
+    #[arg(long, default_value_t = 15)]
+    num_poses: usize,
 }
 
 fn main() {
@@ -81,10 +83,32 @@ fn main() {
         .filter(|mm| mm.dop > args.dop_min)
         .map(|mm| mm.with_dop_max(args.dop_max))
         .collect();
-
     info!("selected {} stokes vectors", mms.len());
-    let (estimated_sensor_params, estimate_loss) =
-        search(mms, args.angle_resolution, root_sensor_params);
+
+    let ps = poses(args.num_poses, -15.0..15.0, -15.0..15.0, 0.0..360.0);
+    info!("generated poses");
+
+    let mut estimate =
+        search(&mms, ps, root_sensor_params).expect("requested a zero-sized search space");
+    info!("completed search");
+
+    let epochs = 5usize;
+    for epoch in 1..epochs {
+        info!("epoch {}", epoch);
+
+        let scale = (epochs - epoch) as f64;
+        let roll_bound = (estimate.params.pose.roll - scale)..(estimate.params.pose.roll + scale);
+        let pitch_bound =
+            (estimate.params.pose.pitch - scale)..(estimate.params.pose.pitch + scale);
+        let yaw_bound = (estimate.params.pose.yaw - scale)..(estimate.params.pose.yaw + scale);
+        let ps = poses(args.num_poses, roll_bound, pitch_bound, yaw_bound);
+        info!("generated poses");
+
+        estimate = estimate.min(
+            search(&mms, ps, root_sensor_params).expect("requested a zero-sized search space"),
+        );
+        info!("completed search");
+    }
 
     let image_file_stem = &args.image.file_stem().unwrap().to_str().unwrap();
     let timestamp: String = match args.timestamp {
@@ -107,10 +131,10 @@ fn main() {
         image_file_stem,
         timestamp,
         sequence_number,
-        estimated_sensor_params.pose.roll,
-        estimated_sensor_params.pose.pitch,
-        estimated_sensor_params.pose.yaw,
-        estimate_loss,
+        estimate.params.pose.roll,
+        estimate.params.pose.pitch,
+        estimate.params.pose.yaw,
+        estimate.loss,
     );
 
     let output = args.output.unwrap_or("result.csv".into());
@@ -122,41 +146,65 @@ fn main() {
     }
 }
 
-fn search(
-    mms: Vec<Measurement>,
-    angle_resolution: f64,
-    root_sensor_params: SensorParams,
-) -> (SensorParams, f64) {
-    let yaws: Vec<f64> = linspace(0.0..360.0, angle_resolution);
-    let pitches: Vec<f64> = linspace(-15.0..=15.0, angle_resolution);
-    let rolls: Vec<f64> = linspace(-15.0..=15.0, angle_resolution);
-
-    let mut estimate: Option<(SensorParams, f64)> = None;
-    for i in 0..yaws.len() {
-        for j in 0..pitches.len() {
-            for k in 0..rolls.len() {
-                let sensor_params = root_sensor_params
-                    .clone()
-                    .with_pose((rolls[k], pitches[j], yaws[i]).into());
-
-                let sensor: Sensor = (&sensor_params).into();
-                let loss = compute_loss(sensor, &mms);
-
-                match estimate {
-                    Some((_, min_loss)) => {
-                        if min_loss > loss {
-                            estimate = Some((sensor_params, loss));
-                        }
-                    }
-                    None => {
-                        estimate = Some((sensor_params, loss));
-                    }
+fn poses(
+    num_poses: usize,
+    roll_bound: Range<f64>,
+    pitch_bound: Range<f64>,
+    yaw_bound: Range<f64>,
+) -> Box<dyn Iterator<Item = Pose>> {
+    Box::new(
+        rand::rng()
+            .sample_iter(StandardUniform)
+            .scan(0usize, move |count, pose: Pose| {
+                if *count == num_poses {
+                    // Stop generating random poses.
+                    return None;
                 }
-            }
+
+                // If pose is inside bounds, include it.
+                if roll_bound.contains(&pose.roll)
+                    && pitch_bound.contains(&pose.pitch)
+                    && yaw_bound.contains(&pose.yaw)
+                {
+                    *count += 1;
+                    return Some(Some(pose));
+                }
+
+                // Otherwise, pose outside of bound, discard it.
+                Some(None)
+            })
+            .filter_map(|pose| pose),
+    )
+}
+
+struct Estimate {
+    params: SensorParams,
+    loss: f64,
+}
+
+impl Estimate {
+    fn min(self, other: Estimate) -> Estimate {
+        match self.loss < other.loss {
+            true => self,
+            false => other,
         }
     }
+}
 
-    estimate.unwrap()
+fn search(
+    mms: &Vec<Measurement>,
+    poses: Box<dyn Iterator<Item = Pose>>,
+    root_sensor_params: SensorParams,
+) -> Option<Estimate> {
+    poses
+        .map(|pose| {
+            let params = root_sensor_params.clone().with_pose(pose);
+            Estimate {
+                params,
+                loss: compute_loss((&params).into(), &mms),
+            }
+        })
+        .reduce(Estimate::min)
 }
 
 fn compute_loss(sensor: Sensor, mms: &Vec<Measurement>) -> f64 {
@@ -176,44 +224,4 @@ fn compute_loss(sensor: Sensor, mms: &Vec<Measurement>) -> f64 {
         })
         .sum::<f64>()
         / mms.len() as f64
-}
-
-/// Constructs a vector of f64 between on the Range provided.
-fn linspace<T>(range: T, resolution: f64) -> Vec<f64>
-where
-    T: RangeBounds<f64>,
-{
-    let start = match range.start_bound() {
-        Bound::Included(&x) => x,
-        Bound::Excluded(&x) => x + resolution,
-        // TODO: Should return an error.
-        Bound::Unbounded => return vec![],
-    };
-
-    let end = match range.end_bound() {
-        Bound::Included(&x) => x,
-        Bound::Excluded(&x) => x - resolution,
-        // TODO: Should return an error.
-        Bound::Unbounded => return vec![],
-    };
-
-    if start >= end {
-        // TODO: Should return an error.
-        return vec![];
-    }
-
-    let range_size = end - start;
-    if resolution > range_size {
-        return vec![start + range_size / 2.];
-    }
-
-    let mut result = Vec::new();
-    let mut current = start;
-
-    while current <= end {
-        result.push(current);
-        current += resolution;
-    }
-
-    result
 }

@@ -1,5 +1,9 @@
 use chrono::{DateTime, Utc};
 use nalgebra::{Rotation3, Vector3};
+use rand::{
+    distr::{Distribution, StandardUniform},
+    Rng,
+};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use spa::{SolarPos, StdFloatOps};
@@ -30,6 +34,16 @@ impl Pose {
             roll: self.roll.to_radians(),
             pitch: self.pitch.to_radians(),
             yaw: self.yaw.to_radians(),
+        }
+    }
+}
+
+impl Distribution<Pose> for StandardUniform {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Pose {
+        Pose {
+            roll: rng.random_range(0.0..360.0),
+            pitch: rng.random_range(0.0..360.0),
+            yaw: rng.random_range(0.0..360.0),
         }
     }
 }
