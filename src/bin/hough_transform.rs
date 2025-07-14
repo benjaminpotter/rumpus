@@ -88,16 +88,16 @@ fn main() {
         .map(|(i, (x, y))| (i, (y / x).atan().to_degrees()))
         .collect();
 
-    let size = (width * height).try_into().unwrap();
-    let mut bytes: Vec<u8> = vec![0u8; size];
-    votes.iter().for_each(|(i, _)| bytes[*i] = 255u8);
-    let _ = image::save_buffer(
-        "votes.png",
-        &bytes,
-        width,
-        height,
-        image::ExtendedColorType::L8,
-    );
+    // let size = (width * height).try_into().unwrap();
+    // let mut bytes: Vec<u8> = vec![0u8; size];
+    // votes.iter().for_each(|(i, _)| bytes[*i] = 255u8);
+    // let _ = image::save_buffer(
+    //     "votes.png",
+    //     &bytes,
+    //     width,
+    //     height,
+    //     image::ExtendedColorType::L8,
+    // );
 
     // Record votes in accumulator.
     let mut acc = Accumulator::new(args.resolution, -90.0..=90.0);
