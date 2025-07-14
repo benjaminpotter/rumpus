@@ -154,7 +154,6 @@ pub struct Sensor {
     pixel_size_mm: Vector3<f64>,
     sensor_size_px: Vector3<f64>,
     focal_point_mm: Vector3<f64>,
-    enu_to_body: Rotation3<f64>,
     body_to_enu: Rotation3<f64>,
     solar_vector_rad: (f64, f64),
 }
@@ -203,7 +202,6 @@ impl From<&SensorParams> for Sensor {
             pixel_size_mm,
             sensor_size_px,
             focal_point_mm,
-            enu_to_body,
             body_to_enu,
             solar_vector_rad,
         }

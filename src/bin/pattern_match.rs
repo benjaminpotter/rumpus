@@ -9,7 +9,7 @@ use rumpus::{
 };
 use std::fs::File;
 use std::io::{BufWriter, Read, Write};
-use std::ops::{Bound, Range, RangeBounds};
+use std::ops::Range;
 use std::path::PathBuf;
 use tracing::{error, info, warn};
 
@@ -85,30 +85,11 @@ fn main() {
         .collect();
     info!("selected {} stokes vectors", mms.len());
 
+    // Searching the pitch and roll axes is not going to work in the current configuration.
+    // The transform into the solar principle plane assumes the optical axis is vertical.
     let ps = poses(args.num_poses, -15.0..15.0, -15.0..15.0, 0.0..360.0);
-    info!("generated poses");
-
-    let mut estimate =
+    let estimate =
         search(&mms, ps, root_sensor_params).expect("requested a zero-sized search space");
-    info!("completed search");
-
-    let epochs = 5usize;
-    for epoch in 1..epochs {
-        info!("epoch {}", epoch);
-
-        let scale = (epochs - epoch) as f64;
-        let roll_bound = (estimate.params.pose.roll - scale)..(estimate.params.pose.roll + scale);
-        let pitch_bound =
-            (estimate.params.pose.pitch - scale)..(estimate.params.pose.pitch + scale);
-        let yaw_bound = (estimate.params.pose.yaw - scale)..(estimate.params.pose.yaw + scale);
-        let ps = poses(args.num_poses, roll_bound, pitch_bound, yaw_bound);
-        info!("generated poses");
-
-        estimate = estimate.min(
-            search(&mms, ps, root_sensor_params).expect("requested a zero-sized search space"),
-        );
-        info!("completed search");
-    }
 
     let image_file_stem = &args.image.file_stem().unwrap().to_str().unwrap();
     let timestamp: String = match args.timestamp {
@@ -118,6 +99,7 @@ fn main() {
             String::new()
         }
     };
+
     let sequence_number: String = match args.sequence_number {
         Some(sn) => format!("{:010.2}", sn),
         None => {
