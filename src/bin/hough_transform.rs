@@ -2,8 +2,13 @@ use clap::Parser;
 use image::ImageReader;
 use rayon::prelude::*;
 use rumpus::image::{IntensityImage, StokesReferenceFrame};
-use std::{ops::RangeInclusive, path::PathBuf};
-use tracing::info;
+use std::{
+    fs::File,
+    io::{BufWriter, Write},
+    ops::RangeInclusive,
+    path::PathBuf,
+};
+use tracing::{error, info, warn};
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -11,6 +16,22 @@ struct Args {
     /// Path to the input image.
     #[arg(long)]
     image: PathBuf,
+
+    /// Optional path to write output to.
+    #[arg(short, long)]
+    output: Option<PathBuf>,
+
+    #[arg(long)]
+    timestamp: Option<u64>,
+
+    #[arg(long)]
+    sequence_number: Option<u64>,
+
+    #[arg(long, default_value_t = 0.2)]
+    threshold: f64,
+
+    #[arg(long, default_value_t = 0.1)]
+    resolution: f64,
 
     #[arg(long, default_value_t = 0.1)]
     dop_min: f64,
@@ -41,7 +62,6 @@ fn main() {
         .par_transform_frame(StokesReferenceFrame::Pixel);
 
     let (width, height) = stokes_image.dimensions();
-    let aop_threshold_deg = 0.2;
     let image_center_px = (width as f64 / 2., height as f64 / 2.);
     let votes: Vec<(usize, f64)> = stokes_image
         .into_measurements()
@@ -51,7 +71,7 @@ fn main() {
         .filter(|(_, mm)| mm.dop > args.dop_min)
         .map(|(i, mm)| (i, mm.with_dop_max(args.dop_max)))
         // Apply binary threshold to select pixels close to +/- 90 deg.
-        .filter(|(_, mm)| (mm.aop.abs() - 90.).abs() < aop_threshold_deg)
+        .filter(|(_, mm)| (mm.aop.abs() - 90.).abs() < args.threshold)
         // Map pixel locations to have origin at optical center.
         .map(|(i, mm)| (i, mm.pixel_location))
         .map(|(i, (col, row))| {
@@ -80,11 +100,48 @@ fn main() {
     );
 
     // Record votes in accumulator.
-    let mut acc = Accumulator::new(0.1, -90.0..=90.0);
+    let mut acc = Accumulator::new(args.resolution, -90.0..=90.0);
     votes.into_iter().for_each(|(_, azimuth)| acc.vote(azimuth));
     let estimate = acc.into_winner();
 
-    println!("estimate {}", estimate);
+    let image_file_stem = &args.image.file_stem().unwrap().to_str().unwrap();
+    let timestamp: String = match args.timestamp {
+        Some(ts) => format!("{:010.2}", ts),
+        None => {
+            warn!("no timestamp provided");
+            String::new()
+        }
+    };
+
+    let sequence_number: String = match args.sequence_number {
+        Some(sn) => format!("{:010.2}", sn),
+        None => {
+            warn!("no sequence_number provided");
+            String::new()
+        }
+    };
+
+    let output_bytes = format!(
+        "image_file_stem,timestamp,sequence_number,roll,pitch,yaw\n{},{},{},{:010.2},{:010.2},{:010.2}\n",
+        image_file_stem,
+        timestamp,
+        sequence_number,
+        0.0,
+        0.0,
+        estimate,
+    );
+
+    let mut writer: Box<dyn Write> = match args.output {
+        Some(path_buf) => Box::new(BufWriter::new(
+            File::create(path_buf).expect("unable to create output file"),
+        )),
+        None => Box::new(BufWriter::new(std::io::stdout())),
+    };
+
+    match writer.write_all(output_bytes.as_bytes()) {
+        Ok(()) => info!("wrote result as csv"),
+        Err(e) => error!(err = e.to_string(), "failed to write result as csv"),
+    }
 }
 
 struct Accumulator {
