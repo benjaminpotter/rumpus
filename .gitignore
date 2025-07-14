@@ -1,9 +1,4 @@
 /target
 Cargo.lock
-
-*.dat
 *.swp
-aop*.png
-dop*.png
-
 .vscode
