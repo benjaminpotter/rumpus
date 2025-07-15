@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 use spa::{SolarPos, StdFloatOps};
 use std::fmt;
 
+// TODO: How do we test something like this?
+
 // In degrees
 // ENU reference frame
 // Euler angles
@@ -269,9 +271,4 @@ impl Sensor {
             .map(|pixel| self.simulate_pixel(pixel))
             .collect()
     }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
 }

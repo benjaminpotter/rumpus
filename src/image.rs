@@ -1,4 +1,4 @@
-use crate::error::Error;
+use crate::{error::Error, mm::Measurement};
 use rayon::prelude::*;
 
 /// A polarized intensity image.
@@ -202,19 +202,6 @@ impl StokesImage {
     }
 }
 
-pub struct Measurement {
-    pub pixel_location: (u32, u32),
-    pub aop: f64,
-    pub dop: f64,
-}
-
-impl Measurement {
-    pub fn with_dop_max(mut self, max: f64) -> Self {
-        self.dop = self.dop.clamp(0.0, max);
-        self
-    }
-}
-
 /// Map an f64 on the interval [x_min, x_max] to an RGB color.
 pub fn to_rgb(x: f64, x_min: f64, x_max: f64) -> Option<[u8; 3]> {
     if x < x_min || x > x_max {
@@ -276,9 +263,4 @@ pub fn to_rgb(x: f64, x_min: f64, x_max: f64) -> Option<[u8; 3]> {
     .unwrap();
 
     Some([r, g, b])
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
 }

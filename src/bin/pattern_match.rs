@@ -4,7 +4,8 @@ use rand::distr::StandardUniform;
 use rand::prelude::*;
 use rayon::prelude::*;
 use rumpus::{
-    image::{IntensityImage, Measurement, StokesReferenceFrame},
+    image::{IntensityImage, StokesReferenceFrame},
+    mm::Measurement,
     sensor::*,
 };
 use std::fs::File;
