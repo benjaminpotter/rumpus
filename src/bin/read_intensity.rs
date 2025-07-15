@@ -1,7 +1,6 @@
 use clap::{Parser, ValueEnum};
 use image::ImageReader;
-use rayon::prelude::*;
-use rumpus::image::{to_rgb, IntensityImage, StokesReferenceFrame};
+use rumpus::image::{AopImage, DopImage, IntensityImage, StokesReferenceFrame};
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -46,26 +45,13 @@ fn main() {
         .par_transform_frame(frame);
 
     let mms = stokes_image.into_measurements();
-
-    let aop_bytes: Vec<u8> = mms
-        .as_slice()
-        .par_iter()
-        .map(|mm| to_rgb(mm.aop, -90., 90.).unwrap())
-        .flatten()
-        .collect();
-
-    let dop_bytes: Vec<u8> = mms
-        .as_slice()
-        .par_iter()
-        .map(|mm| mm.dop.clamp(0., args.dop_max))
-        .map(|dop| to_rgb(dop, 0., args.dop_max).unwrap())
-        .flatten()
-        .collect();
-
     let (width, height) = stokes_image.dimensions();
+    let aop_image = AopImage::from_sparse_mms(&mms, width, height).into_raw();
+    let dop_image = DopImage::from_sparse_mms(&mms, width, height).into_raw();
+
     let _ = image::save_buffer(
         "aop.png",
-        &aop_bytes,
+        &aop_image,
         width,
         height,
         image::ExtendedColorType::Rgb8,
@@ -73,7 +59,7 @@ fn main() {
 
     let _ = image::save_buffer(
         "dop.png",
-        &dop_bytes,
+        &dop_image,
         width,
         height,
         image::ExtendedColorType::Rgb8,

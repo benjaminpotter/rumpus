@@ -2,6 +2,8 @@
 
 //! Skylight Polarization Utilities
 
+mod utils;
+
 #[allow(missing_docs)]
 pub mod error;
 pub mod image;

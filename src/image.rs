@@ -1,5 +1,46 @@
-use crate::{error::Error, mm::Measurement};
+use crate::{error::Error, mm::Measurement, utils};
 use rayon::prelude::*;
+
+struct Mat2<T> {
+    #[allow(dead_code)]
+    dims: (u32, u32),
+    buffer: Vec<T>,
+}
+
+impl<T> Mat2<T> {
+    /// Panics
+    /// - Value location outside of `width` and `height` bounds.
+    fn from_sparse_with_default<I>(values: I, default: T, width: u32, height: u32) -> Self
+    where
+        T: Clone,
+        I: IntoIterator<Item = ((u32, u32), T)>,
+    {
+        let size: usize = (width * height).try_into().unwrap();
+        let dims = (width, height);
+        let mut buffer = vec![default; size];
+
+        for (loc, val) in values.into_iter() {
+            let i: usize = (loc.1 * width + loc.0).try_into().unwrap();
+            match buffer.get_mut(i) {
+                Some(ptr) => {
+                    *ptr = val;
+                }
+                None => panic!("loc {:?} is outside of bounds {:?}", loc, dims),
+            }
+        }
+
+        Mat2 { dims, buffer }
+    }
+}
+
+impl<T> IntoIterator for Mat2<T> {
+    type Item = T;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.buffer.into_iter()
+    }
+}
 
 /// A polarized intensity image.
 ///
@@ -202,65 +243,68 @@ impl StokesImage {
     }
 }
 
-/// Map an f64 on the interval [x_min, x_max] to an RGB color.
-pub fn to_rgb(x: f64, x_min: f64, x_max: f64) -> Option<[u8; 3]> {
-    if x < x_min || x > x_max {
-        return None;
+pub struct AopImage {
+    inner: Mat2<[u8; 3]>,
+}
+
+impl AopImage {
+    /// Panics
+    /// - All `aop` values within `-90.0..90` inclusive.
+    /// - Pixel location outside of `width` and `height` bounds.
+    pub fn from_sparse_mms<'a, I>(mms: I, width: u32, height: u32) -> AopImage
+    where
+        I: IntoIterator<Item = &'a Measurement>,
+    {
+        AopImage {
+            inner: Mat2::from_sparse_with_default(
+                mms.into_iter().map(|mm| {
+                    (
+                        mm.pixel_location,
+                        utils::to_rgb(mm.aop, -90.0, 90.0)
+                            .expect("measurement aop within range -90..90"),
+                    )
+                }),
+                [255, 255, 255],
+                width,
+                height,
+            ),
+        }
     }
 
-    let interval_width = x_max - x_min;
-    let x_norm = ((x - x_min) / interval_width * 255.).floor() as u8;
+    pub fn into_raw(self) -> Vec<u8> {
+        self.inner.into_iter().flatten().collect()
+    }
+}
 
-    let r = vec![
-        255,
-        x_norm
-            .checked_sub(96)
-            .unwrap_or(u8::MIN)
-            .checked_mul(4)
-            .unwrap_or(u8::MAX),
-        255 - x_norm
-            .checked_sub(224)
-            .unwrap_or(u8::MIN)
-            .checked_mul(4)
-            .unwrap_or(u8::MAX),
-    ]
-    .into_iter()
-    .min()
-    .unwrap();
+pub struct DopImage {
+    inner: Mat2<[u8; 3]>,
+}
 
-    let g = vec![
-        255,
-        x_norm
-            .checked_sub(32)
-            .unwrap_or(u8::MIN)
-            .checked_mul(4)
-            .unwrap_or(u8::MAX),
-        255 - x_norm
-            .checked_sub(160)
-            .unwrap_or(u8::MIN)
-            .checked_mul(4)
-            .unwrap_or(u8::MAX),
-    ]
-    .into_iter()
-    .min()
-    .unwrap();
+impl DopImage {
+    /// Panics
+    /// - All `dop` values within `0.0..1.0` inclusive.
+    /// - Pixel location outside of `width` and `height` bounds.
+    pub fn from_sparse_mms<'a, I>(mms: I, width: u32, height: u32) -> DopImage
+    where
+        I: IntoIterator<Item = &'a Measurement>,
+    {
+        DopImage {
+            inner: Mat2::from_sparse_with_default(
+                mms.into_iter().map(|mm| {
+                    (
+                        mm.pixel_location,
+                        utils::to_rgb(mm.dop, 0.0, 1.0)
+                            .expect("measurement dop within range 0.0..1.0"),
+                    )
+                }),
+                [255, 255, 255],
+                width,
+                height,
+            ),
+        }
+    }
 
-    let b = vec![
-        255,
-        x_norm
-            .checked_add(127)
-            .unwrap_or(u8::MIN)
-            .checked_mul(4)
-            .unwrap_or(u8::MAX),
-        255 - x_norm
-            .checked_sub(96)
-            .unwrap_or(u8::MIN)
-            .checked_mul(4)
-            .unwrap_or(u8::MAX),
-    ]
-    .into_iter()
-    .min()
-    .unwrap();
-
-    Some([r, g, b])
+    pub fn into_raw(self) -> Vec<u8> {
+        self.inner.into_iter().flatten().collect()
+    }
 }
