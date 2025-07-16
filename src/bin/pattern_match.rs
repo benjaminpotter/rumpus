@@ -1,17 +1,17 @@
 use clap::Parser;
 use image::ImageReader;
-use rand::distr::StandardUniform;
-use rand::prelude::*;
+use rand::distr::{Distribution, Uniform};
 use rayon::prelude::*;
 use rumpus::{
-    image::{IntensityImage, StokesReferenceFrame},
+    image::{AopImage, IntensityImage, StokesReferenceFrame},
     mm::Measurement,
     sensor::*,
 };
-use std::fs::File;
-use std::io::{BufWriter, Read, Write};
-use std::ops::Range;
-use std::path::PathBuf;
+use std::{
+    fs::File,
+    io::{BufWriter, Read, Write},
+    path::PathBuf,
+};
 use tracing::{error, info, warn};
 
 #[derive(Parser)]
@@ -27,10 +27,16 @@ struct Args {
     sequence_number: Option<u64>,
 
     #[arg(long)]
-    root_sensor_params: Option<PathBuf>,
+    simulated_image: Option<PathBuf>,
+
+    #[arg(long)]
+    measured_image: Option<PathBuf>,
 
     #[arg(short, long)]
     output: Option<PathBuf>,
+
+    #[arg(long)]
+    root_sensor_params: Option<PathBuf>,
 
     #[arg(long, default_value_t = 0.1)]
     dop_min: f64,
@@ -74,10 +80,11 @@ fn main() {
         .into_luma8();
 
     let (width, height) = raw_image.dimensions();
-    let mms: Vec<_> = IntensityImage::from_bytes(width, height, &raw_image.as_raw())
+    let stokes_image = IntensityImage::from_bytes(width, height, &raw_image.as_raw())
         .unwrap()
         .into_stokes_image()
-        .par_transform_frame(StokesReferenceFrame::Pixel)
+        .par_transform_frame(StokesReferenceFrame::Pixel);
+    let mms: Vec<_> = stokes_image
         .into_measurements()
         .into_iter()
         // Remove pixels with low DoP value.
@@ -88,9 +95,14 @@ fn main() {
 
     // Searching the pitch and roll axes is not going to work in the current configuration.
     // The transform into the solar principle plane assumes the optical axis is vertical.
-    let ps = poses(args.num_poses, -15.0..15.0, -15.0..15.0, 0.0..360.0);
-    let estimate =
-        search(&mms, ps, root_sensor_params).expect("requested a zero-sized search space");
+    // For now, just allow yaw.
+
+    let yaw_range = 0.0..360.0;
+    let yaw_iter =
+        Uniform::try_from(yaw_range).expect("to create random distribution from f64 range");
+
+    let estimate = search(&mms, yaw_iter, args.num_poses, root_sensor_params)
+        .expect("requested a zero-sized search space");
 
     let image_file_stem = &args.image.file_stem().unwrap().to_str().unwrap();
     let timestamp: String = match args.timestamp {
@@ -108,6 +120,42 @@ fn main() {
             String::new()
         }
     };
+
+    if let Some(path_buf) = args.simulated_image {
+        let sensor: Sensor = (&estimate.params).into();
+        let mms: Vec<Measurement> = estimate
+            .params
+            .pixels()
+            .into_iter()
+            .map(|px| (px, sensor.simulate_pixel(&px)))
+            .map(|(pixel_location, (aop, dop))| Measurement {
+                pixel_location,
+                aop,
+                dop,
+            })
+            .collect();
+
+        let aop_image = AopImage::from_sparse_mms(&mms, width, height).into_raw();
+        let _ = image::save_buffer(
+            path_buf,
+            &aop_image,
+            estimate.params.sensor_size_px.0,
+            estimate.params.sensor_size_px.1,
+            image::ExtendedColorType::Rgb8,
+        );
+    }
+
+    if let Some(path_buf) = args.measured_image {
+        let (width, height) = stokes_image.dimensions();
+        let aop_image = AopImage::from_sparse_mms(&mms, width, height).into_raw();
+        let _ = image::save_buffer(
+            path_buf,
+            &aop_image,
+            width,
+            height,
+            image::ExtendedColorType::Rgb8,
+        );
+    }
 
     let output_bytes = format!(
         "image_file_stem,timestamp,sequence_number,roll,pitch,yaw,loss\n{},{},{},{:010.2},{:010.2},{:010.2},{:020.5}\n",
@@ -129,37 +177,6 @@ fn main() {
     }
 }
 
-fn poses(
-    num_poses: usize,
-    roll_bound: Range<f64>,
-    pitch_bound: Range<f64>,
-    yaw_bound: Range<f64>,
-) -> Box<dyn Iterator<Item = Pose>> {
-    Box::new(
-        rand::rng()
-            .sample_iter(StandardUniform)
-            .scan(0usize, move |count, pose: Pose| {
-                if *count == num_poses {
-                    // Stop generating random poses.
-                    return None;
-                }
-
-                // If pose is inside bounds, include it.
-                if roll_bound.contains(&pose.roll)
-                    && pitch_bound.contains(&pose.pitch)
-                    && yaw_bound.contains(&pose.yaw)
-                {
-                    *count += 1;
-                    return Some(Some(pose));
-                }
-
-                // Otherwise, pose outside of bound, discard it.
-                Some(None)
-            })
-            .filter_map(|pose| pose),
-    )
-}
-
 struct Estimate {
     params: SensorParams,
     loss: f64,
@@ -176,10 +193,19 @@ impl Estimate {
 
 fn search(
     mms: &Vec<Measurement>,
-    poses: Box<dyn Iterator<Item = Pose>>,
+    yaw_distr: Uniform<f64>,
+    num_poses: usize,
     root_sensor_params: SensorParams,
 ) -> Option<Estimate> {
-    poses
+    let mut rng = rand::rng();
+    yaw_distr
+        .sample_iter(&mut rng)
+        .take(num_poses)
+        .map(|yaw: f64| Pose {
+            roll: 0.0,
+            pitch: 0.0,
+            yaw,
+        })
         .map(|pose| {
             let params = root_sensor_params.clone().with_pose(pose);
             Estimate {
