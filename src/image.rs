@@ -31,6 +31,10 @@ impl<T> Mat2<T> {
 
         Mat2 { dims, buffer }
     }
+
+    fn into_inner(self) -> Vec<T> {
+        self.buffer
+    }
 }
 
 impl<T> IntoIterator for Mat2<T> {
@@ -273,6 +277,10 @@ impl AopImage {
 
     pub fn into_raw(self) -> Vec<u8> {
         self.inner.into_iter().flatten().collect()
+    }
+
+    pub fn into_inner(self) -> Vec<[u8; 3]> {
+        self.inner.into_inner()
     }
 }
 

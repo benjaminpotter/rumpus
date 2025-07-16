@@ -27,10 +27,7 @@ struct Args {
     sequence_number: Option<u64>,
 
     #[arg(long)]
-    simulated_image: Option<PathBuf>,
-
-    #[arg(long)]
-    measured_image: Option<PathBuf>,
+    output_image: Option<PathBuf>,
 
     #[arg(short, long)]
     output: Option<PathBuf>,
@@ -79,11 +76,23 @@ fn main() {
         .unwrap()
         .into_luma8();
 
-    let (width, height) = raw_image.dimensions();
-    let stokes_image = IntensityImage::from_bytes(width, height, &raw_image.as_raw())
+    let (raw_width, raw_height) = raw_image.dimensions();
+    let stokes_image = IntensityImage::from_bytes(raw_width, raw_height, &raw_image.as_raw())
         .unwrap()
         .into_stokes_image()
         .par_transform_frame(StokesReferenceFrame::Pixel);
+
+    let (width, height) = stokes_image.dimensions();
+    if root_sensor_params.sensor_size_px.0 != width || root_sensor_params.sensor_size_px.1 != height
+    {
+        error!(
+            "sensor size mismatch from input image: sensor size was {:?} but image size was {:?}",
+            root_sensor_params.sensor_size_px,
+            (width, height)
+        );
+        std::process::exit(1);
+    }
+
     let mms: Vec<_> = stokes_image
         .into_measurements()
         .into_iter()
@@ -91,6 +100,7 @@ fn main() {
         .filter(|mm| mm.dop > args.dop_min)
         .map(|mm| mm.with_dop_max(args.dop_max))
         .collect();
+
     info!("selected {} stokes vectors", mms.len());
 
     // Searching the pitch and roll axes is not going to work in the current configuration.
@@ -121,9 +131,10 @@ fn main() {
         }
     };
 
-    if let Some(path_buf) = args.simulated_image {
+    if let Some(path_buf) = args.output_image {
+        // Simulate full image with estimated sensor.
         let sensor: Sensor = (&estimate.params).into();
-        let mms: Vec<Measurement> = estimate
+        let sim_mms: Vec<Measurement> = estimate
             .params
             .pixels()
             .into_iter()
@@ -135,23 +146,28 @@ fn main() {
             })
             .collect();
 
-        let aop_image = AopImage::from_sparse_mms(&mms, width, height).into_raw();
-        let _ = image::save_buffer(
-            path_buf,
-            &aop_image,
-            estimate.params.sensor_size_px.0,
-            estimate.params.sensor_size_px.1,
-            image::ExtendedColorType::Rgb8,
-        );
-    }
+        // Convert measurements into Rgb8 image.
+        let sim = AopImage::from_sparse_mms(&sim_mms, width, height).into_inner();
+        let msd = AopImage::from_sparse_mms(&mms, width, height).into_inner();
 
-    if let Some(path_buf) = args.measured_image {
-        let (width, height) = stokes_image.dimensions();
-        let aop_image = AopImage::from_sparse_mms(&mms, width, height).into_raw();
+        // Join all image rows to create single double-wide image.
+        let mut bytes: Vec<u8> = Vec::new();
+        for row in 0..height {
+            for col in 0..width {
+                let i: usize = (row * width + col).try_into().unwrap();
+                bytes.extend_from_slice(&msd[i]);
+            }
+            for col in 0..width {
+                let i: usize = (row * width + col).try_into().unwrap();
+                bytes.extend_from_slice(&sim[i]);
+            }
+        }
+
+        // Write image buffer to disk as PNG.
         let _ = image::save_buffer(
             path_buf,
-            &aop_image,
-            width,
+            &bytes,
+            width * 2,
             height,
             image::ExtendedColorType::Rgb8,
         );
