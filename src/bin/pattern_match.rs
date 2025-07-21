@@ -134,17 +134,8 @@ fn main() {
     if let Some(path_buf) = args.output_image {
         // Simulate full image with estimated sensor.
         let sensor: Sensor = (&estimate.params).into();
-        let sim_mms: Vec<Measurement> = estimate
-            .params
-            .pixels()
-            .into_iter()
-            .map(|px| (px, sensor.simulate_pixel(&px)))
-            .map(|(pixel_location, (aop, dop))| Measurement {
-                pixel_location,
-                aop,
-                dop,
-            })
-            .collect();
+        let pixels = estimate.params.pixels();
+        let sim_mms: Vec<Measurement> = sensor.par_simulate_pixels(&pixels);
 
         // Convert measurements into Rgb8 image.
         let sim = AopImage::from_sparse_mms(&sim_mms, width, height).into_inner();
@@ -237,9 +228,8 @@ fn compute_loss(sensor: Sensor, mms: &Vec<Measurement>) -> f64 {
         .map(|mm| {
             // TODO: I want to compare Measurements using different loss functions
             // TODO: Provide implementation on Measurement structure
-            // TODO: Make Sensor return Measurements rather than (f64, f64)s
-            let (sim, _) = sensor.simulate_pixel(&mm.pixel_location);
-            let mut diff = mm.aop - sim;
+            let sim_mm = sensor.simulate_pixel(&mm.pixel_location);
+            let mut diff = mm.aop - sim_mm.aop;
             if diff < -90. {
                 diff += 180.;
             } else if diff > 90. {

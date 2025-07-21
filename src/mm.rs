@@ -1,3 +1,4 @@
+#[derive(Debug, PartialEq)]
 pub struct Measurement {
     pub pixel_location: (u32, u32),
     pub aop: f64,
@@ -5,6 +6,14 @@ pub struct Measurement {
 }
 
 impl Measurement {
+    pub fn new(pixel_location: (u32, u32), aop: f64, dop: f64) -> Self {
+        Self {
+            pixel_location,
+            aop,
+            dop,
+        }
+    }
+
     pub fn with_dop_max(mut self, max: f64) -> Self {
         self.dop = self.dop.clamp(0.0, max);
         self

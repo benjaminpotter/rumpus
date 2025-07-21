@@ -1,5 +1,4 @@
 use clap::Parser;
-use rayon::prelude::*;
 use rumpus::{image::AopImage, mm::Measurement, sensor::*};
 use std::{
     ffi::OsStr,
@@ -41,18 +40,8 @@ fn main() {
 
     // Simulate AoP and DoP information.
     let sensor = Sensor::from(&params);
-    let mms: Vec<Measurement> = params
-        .pixels()
-        .into_par_iter()
-        .map(|pixel_location| {
-            let (aop, dop) = sensor.simulate_pixel(&pixel_location);
-            Measurement {
-                pixel_location,
-                aop,
-                dop,
-            }
-        })
-        .collect();
+    let pixels = params.pixels();
+    let mms: Vec<Measurement> = sensor.par_simulate_pixels(&pixels);
 
     match args
         .output

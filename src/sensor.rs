@@ -1,3 +1,4 @@
+use crate::mm::Measurement;
 use chrono::{DateTime, Utc};
 use nalgebra::{Rotation3, Vector3};
 use rand::{
@@ -212,9 +213,9 @@ impl From<&SensorParams> for Sensor {
 
 impl Sensor {
     /// Simulate a pixel using the Rayleigh sky model.
-    pub fn simulate_pixel(&self, pixel: &(u32, u32)) -> (f64, f64) {
+    pub fn simulate_pixel(&self, pixel_location: &(u32, u32)) -> Measurement {
         // Compute physical pixel location on image sensor.
-        let pixel = Vector3::new(pixel.0 as f64, pixel.1 as f64, 0.);
+        let pixel = Vector3::new(pixel_location.0 as f64, pixel_location.1 as f64, 0.);
         let pixel = pixel - self.sensor_size_px * 0.5;
         let phys_loc = self.pixel_size_mm.component_mul(&pixel);
 
@@ -260,12 +261,16 @@ impl Sensor {
 
         // let aop_rad = (body_e_vector.dot(&y_mer) / body_e_vector.dot(&x_mer)).atan();
 
-        (aop_rad.to_degrees(), dop)
+        Measurement {
+            pixel_location: *pixel_location,
+            aop: aop_rad.to_degrees(),
+            dop,
+        }
     }
 
     /// Simulates the specified pixels in parallel.
     /// Returns a vector of pixels in the same order they were provided.
-    pub fn par_simulate_pixels(&self, pixels: &Vec<(u32, u32)>) -> Vec<(f64, f64)> {
+    pub fn par_simulate_pixels(&self, pixels: &Vec<(u32, u32)>) -> Vec<Measurement> {
         pixels
             .par_iter()
             .map(|pixel| self.simulate_pixel(pixel))
@@ -300,15 +305,15 @@ mod tests {
                 .unwrap(),
         };
 
-        let simulated_pixels = vec![
-            (-37.420423616444666, 0.0),
-            (-77.36102279318438, 0.0),
-            (40.03047380377111, 0.0),
-            (62.28474307858949, 0.0),
+        let mms = vec![
+            Measurement::new((0, 0), -37.420423616444666, 0.0),
+            Measurement::new((2448, 0), -77.36102279318438, 0.0),
+            Measurement::new((0, 2048), 40.03047380377111, 0.0),
+            Measurement::new((2448, 2048), 62.28474307858949, 0.0),
         ];
 
-        let pixels = vec![(0, 0), (2448, 0), (0, 2048), (2448, 2048)];
         let sensor = Sensor::from(&params);
-        assert_eq!(simulated_pixels, sensor.par_simulate_pixels(&pixels));
+        let pixels: Vec<(u32, u32)> = mms.iter().map(|mm| mm.pixel_location).collect();
+        assert_eq!(mms, sensor.par_simulate_pixels(&pixels));
     }
 }
