@@ -272,3 +272,43 @@ impl Sensor {
             .collect()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Regression test for pixel simulation algorithm.
+    /// Ground truth results were computed at commit with hash:
+    /// 4019279eb957ebfbd947ebd9138b11f2259911eb
+    #[test]
+    fn test_simulate() {
+        let params = SensorParams {
+            pixel_size_um: (3.45, 3.45),
+            sensor_size_px: (2448, 2048),
+            focal_length_mm: 8.0,
+            pose: Pose {
+                roll: 0.0,
+                pitch: 0.0,
+                yaw: 0.0,
+            },
+            position: Position {
+                lat: 44.2187,
+                lon: -76.4747,
+            },
+            time: "2025-06-13T16:26:47+00:00"
+                .parse::<DateTime<Utc>>()
+                .unwrap(),
+        };
+
+        let simulated_pixels = vec![
+            (-37.420423616444666, 0.0),
+            (-77.36102279318438, 0.0),
+            (40.03047380377111, 0.0),
+            (62.28474307858949, 0.0),
+        ];
+
+        let pixels = vec![(0, 0), (2448, 0), (0, 2048), (2448, 2048)];
+        let sensor = Sensor::from(&params);
+        assert_eq!(simulated_pixels, sensor.par_simulate_pixels(&pixels));
+    }
+}
