@@ -1,3 +1,24 @@
+pub struct StokesParams {
+    px: (u32, u32),
+    inner: [f64; 3],
+}
+
+impl StokesParams {
+    pub fn new(px: (u32, u32), inner: [f64; 3]) -> Self {
+        Self { px, inner }
+    }
+}
+
+impl Into<Measurement> for StokesParams {
+    fn into(self) -> Measurement {
+        Measurement::new(
+            self.px,
+            (self.inner[2].atan2(self.inner[1]) / 2.).to_degrees(),
+            (self.inner[1].powf(2.) + self.inner[2].powf(2.)).sqrt() / self.inner[0],
+        )
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub struct Measurement {
     pixel_location: (u32, u32),

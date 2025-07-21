@@ -1,4 +1,8 @@
-use crate::{error::Error, mm::Measurement, utils};
+use crate::{
+    error::Error,
+    mm::{Measurement, StokesParams},
+    utils,
+};
 use rayon::prelude::*;
 
 struct Mat2<T> {
@@ -159,6 +163,25 @@ impl IntensityImage {
             frame,
             pixels,
         }
+    }
+
+    pub fn into_stokes_params(self) -> Vec<StokesParams> {
+        (0..self.dims.1)
+            .into_iter()
+            .map(|y| (0..self.dims.0).into_iter().map(move |x| (x, y)))
+            .flatten()
+            .zip(self.metapixels)
+            .map(|(px, mp)| {
+                StokesParams::new(
+                    px,
+                    [
+                        (mp[0] + mp[1] + mp[2] + mp[3]) / 2.,
+                        mp[0] - mp[2],
+                        mp[1] - mp[3],
+                    ],
+                )
+            })
+            .collect()
     }
 }
 
