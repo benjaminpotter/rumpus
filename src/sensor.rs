@@ -282,11 +282,10 @@ impl Sensor {
 mod tests {
     use super::*;
 
-    /// Regression test for pixel simulation algorithm.
-    /// Ground truth results were computed at commit with hash:
-    /// 4019279eb957ebfbd947ebd9138b11f2259911eb
+    /// Test simulation algorithm using regression.
+    /// Using commit with hash 4019279...
     #[test]
-    fn test_simulate() {
+    fn regress_simulate() {
         let params = SensorParams {
             pixel_size_um: (3.45, 3.45),
             sensor_size_px: (2448, 2048),
