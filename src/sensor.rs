@@ -261,11 +261,7 @@ impl Sensor {
 
         // let aop_rad = (body_e_vector.dot(&y_mer) / body_e_vector.dot(&x_mer)).atan();
 
-        Measurement {
-            pixel_location: *pixel_location,
-            aop: aop_rad.to_degrees(),
-            dop,
-        }
+        Measurement::new(*pixel_location, aop_rad.to_degrees(), dop)
     }
 
     /// Simulates the specified pixels in parallel.

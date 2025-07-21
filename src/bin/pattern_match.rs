@@ -97,7 +97,7 @@ fn main() {
         .into_measurements()
         .into_iter()
         // Remove pixels with low DoP value.
-        .filter(|mm| mm.dop > args.dop_min)
+        .filter(|mm| *mm.get_dop() > args.dop_min)
         .map(|mm| mm.with_dop_max(args.dop_max))
         .collect();
 
@@ -228,14 +228,14 @@ fn compute_loss(sensor: Sensor, mms: &Vec<Measurement>) -> f64 {
         .map(|mm| {
             // TODO: I want to compare Measurements using different loss functions
             // TODO: Provide implementation on Measurement structure
-            let sim_mm = sensor.simulate_pixel(&mm.pixel_location);
-            let mut diff = mm.aop - sim_mm.aop;
+            let sim_mm = sensor.simulate_pixel(mm.get_pixel_location());
+            let mut diff = *mm.get_aop() - *sim_mm.get_aop();
             if diff < -90. {
                 diff += 180.;
             } else if diff > 90. {
                 diff -= 180.;
             }
-            diff.powf(2.) / mm.dop
+            diff.powf(2.) / *mm.get_dop()
         })
         .sum::<f64>()
         / mms.len() as f64

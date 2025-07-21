@@ -75,7 +75,7 @@ fn main() {
             for row in 0..params.sensor_size_px.1 {
                 for col in 0..params.sensor_size_px.0 {
                     let i: usize = (row * params.sensor_size_px.0 + col).try_into().unwrap();
-                    let _ = write!(output_file, "{:5} ", mms[i].aop);
+                    let _ = write!(output_file, "{:5} ", mms[i].get_aop());
                 }
                 let _ = write!(output_file, "\n");
             }

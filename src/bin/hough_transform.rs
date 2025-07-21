@@ -68,12 +68,12 @@ fn main() {
         .into_par_iter()
         .enumerate()
         // Remove pixels with low DoP value.
-        .filter(|(_, mm)| mm.dop > args.dop_min)
+        .filter(|(_, mm)| *mm.get_dop() > args.dop_min)
         .map(|(i, mm)| (i, mm.with_dop_max(args.dop_max)))
         // Apply binary threshold to select pixels close to +/- 90 deg.
-        .filter(|(_, mm)| (mm.aop.abs() - 90.).abs() < args.threshold)
+        .filter(|(_, mm)| ((*mm.get_aop()).abs() - 90.).abs() < args.threshold)
         // Map pixel locations to have origin at optical center.
-        .map(|(i, mm)| (i, mm.pixel_location))
+        .map(|(i, mm)| (i, *mm.get_pixel_location()))
         .map(|(i, (col, row))| {
             (
                 i,

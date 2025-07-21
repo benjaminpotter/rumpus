@@ -238,10 +238,8 @@ impl StokesImage {
             .map(|row| (0..self.dims.0).into_iter().map(move |col| (col, row)))
             .flatten()
             .filter_map(|px| self.get_pixel(px).map(|sv| (px, sv)))
-            .map(|(px, sv)| Measurement {
-                pixel_location: px,
-                aop: StokesImage::sv_to_aop(&sv),
-                dop: StokesImage::sv_to_dop(&sv),
+            .map(|(px, sv)| {
+                Measurement::new(px, StokesImage::sv_to_aop(&sv), StokesImage::sv_to_dop(&sv))
             })
             .collect()
     }
@@ -263,8 +261,8 @@ impl AopImage {
             inner: Mat2::from_sparse_with_default(
                 mms.into_iter().map(|mm| {
                     (
-                        mm.pixel_location,
-                        utils::to_rgb(mm.aop, -90.0, 90.0)
+                        *mm.get_pixel_location(),
+                        utils::to_rgb(*mm.get_aop(), -90.0, 90.0)
                             .expect("measurement aop within range -90..90"),
                     )
                 }),
@@ -300,8 +298,8 @@ impl DopImage {
             inner: Mat2::from_sparse_with_default(
                 mms.into_iter().map(|mm| {
                     (
-                        mm.pixel_location,
-                        utils::to_rgb(mm.dop, 0.0, 1.0)
+                        *mm.get_pixel_location(),
+                        utils::to_rgb(*mm.get_dop(), 0.0, 1.0)
                             .expect("measurement dop within range 0.0..1.0"),
                     )
                 }),
