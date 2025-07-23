@@ -4,16 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-tracing = "0.1"
-tracing-subscriber = "0.3"
+rayon = "1.10.0"
 image = { version="0.25.6", features=["rayon"] }
 nalgebra = "0.33.2"
-rayon = "1.10.0"
+rand = "0.9"
+chrono = { version="0.4.41", features=["serde"] }
+spa = "0.5.1"
+clap = { version="4.5", features=["derive"] }
 serde = { version="1.0", features=["derive"] }
 serde_json = "1.0"
-clap = { version="4.5", features=["derive"] }
-spa = "0.5.1"
-chrono = { version="0.4.41", features=["serde"] }
-rand = "0.9"
-rosbags-rs = "0.3"
-tabled = "0.20"
