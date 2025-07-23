@@ -31,27 +31,3 @@ impl Measurement {
         &self.dop
     }
 }
-
-// struct Measurements
-// - impl Iterator for Measurements
-// - type Item = Measurement
-//
-// - fn filter<I: Iterator<Item = Measurement, F: MeasurementFilter>(self, filter: F) -> Filter<I, F>
-// - fn estimates<Et, I: Iterator<Item = Et>, Er: Estimator<Estimate = Et>>(self, estimator: Er) -> Estimates<Et, I, Er>
-
-// struct Filter<I, F>
-// - iter: I
-// - mm_filter: F
-//
-// - impl<I, F> Iterator for Filter<I, F> where I: Iterator<Item = Measurement>, F:MeasurementFilter
-// - type Item = I::Item
-// - fn next(&mut self) -> Option<Self::Item> calls self.iter.find(|mm| self.mm_filter.filter(mm))
-
-// struct Estimates<Et, I, Er>
-// - iter: I
-// - estimator: Er
-// - _phantom: Et
-//
-// - impl<Et, I, Er> Iterator for Estimates<Et, I, Er> where I: Iterator<Item = Et>, Er: Estimator<Estimate = Et>
-// - type Item = I::Item
-// - fn next(&mut self) -> Option<Self::Item> calls self.estimator.estimate(self.iter.next()?)
