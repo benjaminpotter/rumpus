@@ -29,7 +29,9 @@ impl StokesVec {
 }
 
 /// Describes the e-vector orientation of a ray.
-#[derive(Debug, PartialEq)]
+///
+/// The angle of the e-vector must be between -90.0 and 90.0.
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Aop {
     /// The angle of the e-vector of the ray in degrees.
     angle: f64,
@@ -52,6 +54,34 @@ impl Aop {
     pub fn from_deg(angle: f64) -> Self {
         assert!(-90.0 <= angle && angle <= 90.0);
         Self { angle }
+    }
+
+    fn from_deg_wrap(mut angle: f64) -> Self {
+        if angle < -90.0 {
+            while angle < 0.0 {
+                angle += 180.0;
+            }
+        } else if angle > 90.0 {
+            while angle > 0.0 {
+                angle -= 180.0;
+            }
+        }
+
+        Self::from_deg(angle)
+    }
+
+    /// Returns true if `other` is within `thres` of `self` inclusive and
+    /// handling wrapping.
+    pub fn in_thres(&self, other: &Aop, thres: f64) -> bool {
+        (*self - *other).angle.abs() <= thres
+    }
+}
+
+impl std::ops::Sub for Aop {
+    type Output = Self;
+
+    fn sub(self, other: Self) -> Self::Output {
+        Self::from_deg_wrap(self.angle - other.angle)
     }
 }
 
@@ -87,6 +117,26 @@ impl From<f64> for Dop {
     }
 }
 
+// Ray should probably operate with respect to the ENU frame.
+// Right now it uses the image frame.
+//
+// Motivation:
+// The estimation algorithms require the global frame to handle non-zero pitch
+// and roll values.
+//
+// - Used in ht to compute angle of ray wrt east
+// - Making the assumption that matching the transform to the zenith pixel
+// - zenith position is only constrained by three angles
+//
+// SensorParams should be called CameraParams
+// Should hold a state
+// State should hold a position time and pose
+// Each ray should get a Vector3 that corresponds to the global frame
+// Shoots from the pixel location into the sky
+// Directly corresponds to the sensor's ray in enu frame
+//
+// Image rays needs to take a CameraParams in order to generate this
+
 /// Describes the angle and degree of polarization for a single ray.
 #[derive(Debug, PartialEq)]
 pub struct Ray {
@@ -111,6 +161,10 @@ impl Ray {
 
     pub fn get_loc(&self) -> &(u32, u32) {
         &self.loc
+    }
+
+    pub fn get_aop(&self) -> &Aop {
+        &self.angle
     }
 
     pub fn get_dop(&self) -> &Dop {
@@ -138,5 +192,45 @@ mod tests {
     #[should_panic]
     fn create_invalid_dop() {
         assert_eq!(-1.0, Dop::new(-1.0).degree);
+    }
+
+    #[test]
+    fn sub_aop() {
+        assert_eq!(
+            Aop::from_deg(1.0),
+            Aop::from_deg(-90.0) - Aop::from_deg(89.0)
+        );
+
+        assert_eq!(
+            Aop::from_deg(0.0),
+            Aop::from_deg(-90.0) - Aop::from_deg(90.0)
+        );
+
+        assert_eq!(
+            Aop::from_deg(0.0),
+            Aop::from_deg(-90.0) - Aop::from_deg(-90.0)
+        );
+    }
+
+    #[test]
+    fn threshold_aop() {
+        const THRES: f64 = 0.1;
+        let center = Aop::from_deg(90.0);
+
+        for ref case in vec![
+            Aop::from_deg(89.90),
+            Aop::from_deg(-90.0),
+            Aop::from_deg(-89.90),
+        ] {
+            assert_eq!(true, center.in_thres(case, THRES));
+        }
+
+        for ref case in vec![
+            Aop::from_deg(89.89),
+            Aop::from_deg(45.0),
+            Aop::from_deg(-89.89),
+        ] {
+            assert_eq!(false, center.in_thres(case, THRES));
+        }
     }
 }

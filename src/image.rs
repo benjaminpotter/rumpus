@@ -1,7 +1,8 @@
 use crate::{
     error::Error,
+    estimator::Estimator,
     filter::{RayFilter, RayPredicate},
-    mm::{Ray, StokesVec},
+    ray::{Ray, StokesVec},
 };
 use rayon::prelude::*;
 
@@ -135,10 +136,22 @@ pub struct Rays<'a> {
 //         RayFilter::new(self, pred)
 //     }
 // }
+//
+// trait IntoRayIterator
+// trait RayIterator
+//
+// allow sensor to produce an iterator too
 
 impl<'a> Rays<'a> {
     pub fn ray_filter<P: RayPredicate>(self, pred: P) -> RayFilter<Self, P> {
         RayFilter::new(self, pred)
+    }
+
+    pub fn estimate<E, O>(self, mut estimator: E) -> O
+    where
+        E: Estimator<Output = O>,
+    {
+        estimator.estimate(self)
     }
 }
 

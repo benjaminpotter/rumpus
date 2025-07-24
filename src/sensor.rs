@@ -1,90 +1,13 @@
-use crate::mm::{Aop, Dop, Ray};
+use crate::{
+    ray::{Aop, Dop, Ray},
+    state::{Pose, Position},
+};
 use chrono::{DateTime, Utc};
 use nalgebra::{Rotation3, Vector3};
-use rand::{
-    distr::{Distribution, StandardUniform},
-    Rng,
-};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use spa::{SolarPos, StdFloatOps};
 use std::fmt;
-
-// TODO: How do we test something like this?
-
-// In degrees
-// ENU reference frame
-// Euler angles
-#[derive(Clone, Copy, Serialize, Deserialize, Debug)]
-pub struct Pose {
-    pub roll: f64,
-    pub pitch: f64,
-    pub yaw: f64,
-}
-
-impl Pose {
-    fn up() -> Self {
-        Self {
-            roll: 0.0,
-            pitch: 0.0,
-            yaw: 0.0,
-        }
-    }
-
-    // TODO: Properly handle radians...
-    fn to_radians(&self) -> Self {
-        Self {
-            roll: self.roll.to_radians(),
-            pitch: self.pitch.to_radians(),
-            yaw: self.yaw.to_radians(),
-        }
-    }
-}
-
-impl Distribution<Pose> for StandardUniform {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Pose {
-        Pose {
-            roll: rng.random_range(0.0..360.0),
-            pitch: rng.random_range(0.0..360.0),
-            yaw: rng.random_range(0.0..360.0),
-        }
-    }
-}
-
-impl From<(f64, f64, f64)> for Pose {
-    fn from(tuple: (f64, f64, f64)) -> Self {
-        let (roll, pitch, yaw) = tuple;
-        Self { roll, pitch, yaw }
-    }
-}
-
-impl Into<(f64, f64, f64)> for Pose {
-    fn into(self) -> (f64, f64, f64) {
-        (self.roll, self.pitch, self.yaw)
-    }
-}
-
-impl Into<Rotation3<f64>> for Pose {
-    fn into(self) -> Rotation3<f64> {
-        let (roll_rad, pitch_rad, yaw_rad) = self.to_radians().into();
-        Rotation3::from_euler_angles(roll_rad, pitch_rad, yaw_rad)
-    }
-}
-
-#[derive(Clone, Copy, Serialize, Deserialize, Debug)]
-pub struct Position {
-    pub lat: f64,
-    pub lon: f64,
-}
-
-impl Position {
-    fn kingston() -> Self {
-        Self {
-            lat: 44.2187,
-            lon: -76.4747,
-        }
-    }
-}
 
 /// A serializable data structure used to construct a simulated sensor.
 #[derive(Clone, Copy, Serialize, Deserialize, Debug)]

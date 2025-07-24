@@ -1,4 +1,4 @@
-use crate::mm::{Dop, Ray};
+use crate::ray::{Aop, Dop, Ray};
 
 /// A predicate over a ray.
 ///
@@ -9,11 +9,24 @@ pub trait RayPredicate {
     fn eval(&self, ray: &Ray) -> bool;
 }
 
-// struct AoPFilter
-//   - threshold
-//   - impl MeasurementFilter
-// - Includes the measurement if inside range
-// - Used for hough and pattern match
+/// A predicate that holds on rays with
+/// `center - thres <= Aop <= center + thres` and handles wrapping.
+pub struct AopFilter {
+    center: Aop,
+    thres: f64,
+}
+
+impl AopFilter {
+    pub fn new(center: Aop, thres: f64) -> Self {
+        Self { center, thres }
+    }
+}
+
+impl RayPredicate for AopFilter {
+    fn eval(&self, ray: &Ray) -> bool {
+        self.center.in_thres(ray.get_aop(), self.thres)
+    }
+}
 
 /// A predicate that holds on rays with `Dop >= min`.
 pub struct DopFilter {
@@ -34,6 +47,7 @@ impl RayPredicate for DopFilter {
 
 // struct CircleFilter
 //   - radius
+//   - center
 //   - impl MeasurementFilter
 // - Includes the measurement if inside circle
 
