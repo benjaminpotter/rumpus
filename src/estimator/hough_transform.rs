@@ -1,32 +1,35 @@
 use crate::{
     estimator::Estimator,
     filter::AopFilter,
-    image::Rays,
-    ray::{Aop, Ray},
-    state::{Position, Positioned, Timed},
+    ray::{Aop, Ray, RayIterator},
 };
-use chrono::prelude::*;
 use std::ops::RangeInclusive;
 
 /// Estimates azimuth using a 1D Hough transform.
-pub struct HoughTransform<S> {
-    state: S,
-
+pub struct HoughTransform {
     /// The location of the zenith in the sensor plane represented as
     /// co-ordinates in image space.
     zenith: (f64, f64),
+
+    /// The azimuth angle of the solar meridian.
+    ///
+    /// Taken CW from north.
+    saz: f64,
+
+    /// The AoP threshold used to isolate the solar meridian.
     thres: f64,
-    acc: Accumulator,
+
+    /// The minimum resolution for esimates in degrees.
+    res: f64,
 }
 
-impl<S> HoughTransform<S> {
-    pub fn new(state: S, res: f64, zenith: (f64, f64), thres: f64) -> Self {
-        let acc = Accumulator::new(res, -90.0..=90.0);
+impl HoughTransform {
+    pub fn new(saz: f64, zenith: (f64, f64), res: f64, thres: f64) -> Self {
         Self {
-            state,
+            saz,
             zenith,
             thres,
-            acc,
+            res,
         }
     }
 
@@ -37,22 +40,21 @@ impl<S> HoughTransform<S> {
     }
 }
 
-impl<S> Estimator for HoughTransform<S>
-where
-    S: Positioned + Timed,
-{
+impl Estimator for HoughTransform {
     type Output = f64;
 
-    fn estimate(&mut self, rays: Rays) -> Self::Output {
+    fn estimate<I: RayIterator>(&self, rays: I) -> Self::Output {
+        let mut acc = Accumulator::new(self.res, -90.0..=90.0);
         for ray in rays.ray_filter(AopFilter::new(Aop::from_deg(90.0), self.thres)) {
             let angle = self.ray_angle(ray);
 
             // TODO: make collect from iterator of votes.
-            self.acc.vote(angle);
+            acc.vote(angle);
         }
 
-        // TODO: use state to make this wrt ENU frame.
-        self.acc.winner()
+        // TODO: disambiguate from (anti-) solar meridian
+        // TODO: use self.saz to make this wrt ENU frame.
+        acc.winner()
     }
 }
 
@@ -96,5 +98,32 @@ impl Accumulator {
             .unwrap();
 
         self.index_to_value(index)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::image::IntensityImage;
+    use image::{GrayImage, ImageReader};
+
+    #[test]
+    fn hough_transform() {
+        let image = read_image();
+        let (width, height) = image.dimensions();
+        let est = IntensityImage::from_bytes(width, height, &image.into_raw())
+            .unwrap()
+            .rays()
+            .estimate(HoughTransform::new(0.0, (612.0, 512.0), 0.1, 0.2));
+
+        assert_eq!(est, -40.5);
+    }
+
+    fn read_image() -> GrayImage {
+        ImageReader::open("testing/intensity.png")
+            .unwrap()
+            .decode()
+            .unwrap()
+            .into_luma8()
     }
 }

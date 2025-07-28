@@ -17,12 +17,12 @@
 
 mod hough_transform;
 
-use crate::image::Rays;
+use crate::ray::RayIterator;
 pub use hough_transform::HoughTransform;
 
 pub trait Estimator {
     type Output;
-    fn estimate(&mut self, rays: Rays) -> Self::Output;
+    fn estimate<I: RayIterator>(&self, rays: I) -> Self::Output;
 }
 
 // struct Estimates<Et, I, Er>

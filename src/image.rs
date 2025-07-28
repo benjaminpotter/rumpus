@@ -1,8 +1,6 @@
 use crate::{
     error::Error,
-    estimator::Estimator,
-    filter::{RayFilter, RayPredicate},
-    ray::{Ray, StokesVec},
+    ray::{Ray, RayIterator, StokesVec},
 };
 use rayon::prelude::*;
 
@@ -115,51 +113,57 @@ impl IntensityImage {
         Ok(Self { metapixels })
     }
 
-    pub fn rays(&self) -> Rays {
-        Rays {
+    pub fn rays(&self) -> ImageRays {
+        ImageRays {
             inner: self.metapixels.iter(),
         }
     }
 }
 
 /// An iterator over rays.
-pub struct Rays<'a> {
+pub struct ImageRays<'a> {
     inner: std::slice::Iter<'a, IntensityPixel>,
 }
 
-// Super traits
-// trait RayFilterable: Iterator<Item = Ray> {
-//     fn ray_filter<P: RayPredicate>(self, pred: P) -> RayFilter<Self, P>
-//     where
-//         Self: Sized,
-//     {
-//         RayFilter::new(self, pred)
-//     }
-// }
-//
-// trait IntoRayIterator
-// trait RayIterator
-//
-// allow sensor to produce an iterator too
-
-impl<'a> Rays<'a> {
-    pub fn ray_filter<P: RayPredicate>(self, pred: P) -> RayFilter<Self, P> {
-        RayFilter::new(self, pred)
-    }
-
-    pub fn estimate<E, O>(self, mut estimator: E) -> O
-    where
-        E: Estimator<Output = O>,
-    {
-        estimator.estimate(self)
-    }
-}
-
-impl<'a> Iterator for Rays<'a> {
+impl<'a> Iterator for ImageRays<'a> {
     type Item = Ray;
     fn next(&mut self) -> Option<Self::Item> {
         let px = self.inner.next()?;
         let loc = px.loc.clone();
         Some(Ray::from_stokes(loc, px.to_stokes()))
+    }
+}
+
+// All of RayIterator's functions are defined using Iterator.
+impl<'a> RayIterator for ImageRays<'a> {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ray::{Aop, Dop, Ray};
+    use image::{GrayImage, ImageReader};
+
+    #[test]
+    fn first_ray() {
+        let image = read_image();
+        let (width, height) = image.dimensions();
+        let ray = IntensityImage::from_bytes(width, height, &image.into_raw())
+            .unwrap()
+            .rays()
+            .next()
+            .unwrap();
+
+        assert_eq!(
+            ray,
+            Ray::new((0, 0), Aop::from_deg(90.0), Dop::new(0.2222222222222222))
+        );
+    }
+
+    fn read_image() -> GrayImage {
+        ImageReader::open("testing/intensity.png")
+            .unwrap()
+            .decode()
+            .unwrap()
+            .into_luma8()
     }
 }

@@ -85,7 +85,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{image::IntensityImage, mm::Ray};
+    use crate::{image::IntensityImage, ray::Ray};
     use image::{GrayImage, ImageReader};
 
     #[test]

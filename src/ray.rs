@@ -1,3 +1,7 @@
+use crate::{
+    estimator::Estimator,
+    filter::{RayFilter, RayPredicate},
+};
 use std::f64::consts::FRAC_PI_2;
 
 /// Describes the linear polarization of a ray.
@@ -169,6 +173,23 @@ impl Ray {
 
     pub fn get_dop(&self) -> &Dop {
         &self.degree
+    }
+}
+
+pub trait RayIterator: Iterator<Item = Ray> {
+    fn ray_filter<P: RayPredicate>(self, pred: P) -> RayFilter<Self, P>
+    where
+        Self: Sized,
+    {
+        RayFilter::new(self, pred)
+    }
+
+    fn estimate<E, O>(self, estimator: E) -> O
+    where
+        Self: Sized,
+        E: Estimator<Output = O>,
+    {
+        estimator.estimate(self)
     }
 }
 
