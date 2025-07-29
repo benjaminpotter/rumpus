@@ -6,10 +6,31 @@ use rand::{
 };
 use serde::{Deserialize, Serialize};
 
+#[derive(Clone, Copy, Serialize, Deserialize, Debug)]
+pub struct State {
+    pose: Pose,
+    position: Position,
+    time: DateTime<Utc>,
+}
+
+impl State {
+    pub fn new(pose: Pose, position: Position, time: DateTime<Utc>) -> Self {
+        Self {
+            pose,
+            position,
+            time,
+        }
+    }
+
+    pub fn into_inner(self) -> (Pose, Position, DateTime<Utc>) {
+        (self.pose, self.position, self.time)
+    }
+}
+
 // In degrees
 // ENU reference frame
 // Euler angles
-#[derive(Clone, Copy, Serialize, Deserialize, Debug)]
+#[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq)]
 pub struct Pose {
     pub roll: f64,
     pub pitch: f64,
@@ -78,12 +99,4 @@ impl Position {
             lon: -76.4747,
         }
     }
-}
-
-pub trait Positioned {
-    fn position(&self) -> Position;
-}
-
-pub trait Timed {
-    fn time(&self) -> DateTime<Utc>;
 }

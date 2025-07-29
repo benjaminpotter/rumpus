@@ -79,6 +79,10 @@ impl Aop {
     pub fn in_thres(&self, other: &Aop, thres: f64) -> bool {
         (*self - *other).angle.abs() <= thres
     }
+
+    pub fn into_inner(self) -> f64 {
+        self.angle
+    }
 }
 
 impl std::ops::Sub for Aop {
@@ -90,7 +94,7 @@ impl std::ops::Sub for Aop {
 }
 
 /// Describes the intensity ratio of polarized light in a ray.
-#[derive(Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
 pub struct Dop {
     degree: f64,
 }
@@ -112,6 +116,10 @@ impl Dop {
         Self {
             degree: self.degree.clamp(0.0, max),
         }
+    }
+
+    pub fn into_inner(self) -> f64 {
+        self.degree
     }
 }
 
