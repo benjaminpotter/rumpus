@@ -51,14 +51,6 @@ impl RayPredicate for DopFilter {
 //   - impl MeasurementFilter
 // - Includes the measurement if inside circle
 
-// struct Filter<I, F>
-// - iter: I
-// - mm_filter: F
-//
-// - impl<I, F> Iterator for Filter<I, F> where I: Iterator<Item = Measurement>, F:MeasurementFilter
-// - type Item = I::Item
-// - fn next(&mut self) -> Option<Self::Item> calls self.iter.find(|mm| self.mm_filter.filter(mm))
-
 /// An iterator that filters rays from `iter` with `pred.eval`.
 pub struct RayFilter<I, P> {
     iter: I,
