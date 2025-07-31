@@ -1,94 +1,16 @@
-use crate::mm::Measurement;
-use chrono::{DateTime, Utc};
-use nalgebra::{Rotation3, Vector3};
-use rand::{
-    distr::{Distribution, StandardUniform},
-    Rng,
+use crate::{
+    ray::{Aop, Dop, Ray},
+    state::State,
 };
+use nalgebra::{Rotation3, Vector3};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use spa::{SolarPos, StdFloatOps};
 use std::fmt;
 
-// TODO: How do we test something like this?
-
-// In degrees
-// ENU reference frame
-// Euler angles
+/// A serializable data structure used to construct a simulated camera.
 #[derive(Clone, Copy, Serialize, Deserialize, Debug)]
-pub struct Pose {
-    pub roll: f64,
-    pub pitch: f64,
-    pub yaw: f64,
-}
-
-impl Pose {
-    fn up() -> Self {
-        Self {
-            roll: 0.0,
-            pitch: 0.0,
-            yaw: 0.0,
-        }
-    }
-
-    // TODO: Properly handle radians...
-    fn to_radians(&self) -> Self {
-        Self {
-            roll: self.roll.to_radians(),
-            pitch: self.pitch.to_radians(),
-            yaw: self.yaw.to_radians(),
-        }
-    }
-}
-
-impl Distribution<Pose> for StandardUniform {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Pose {
-        Pose {
-            roll: rng.random_range(0.0..360.0),
-            pitch: rng.random_range(0.0..360.0),
-            yaw: rng.random_range(0.0..360.0),
-        }
-    }
-}
-
-impl From<(f64, f64, f64)> for Pose {
-    fn from(tuple: (f64, f64, f64)) -> Self {
-        let (roll, pitch, yaw) = tuple;
-        Self { roll, pitch, yaw }
-    }
-}
-
-impl Into<(f64, f64, f64)> for Pose {
-    fn into(self) -> (f64, f64, f64) {
-        (self.roll, self.pitch, self.yaw)
-    }
-}
-
-impl Into<Rotation3<f64>> for Pose {
-    fn into(self) -> Rotation3<f64> {
-        let (roll_rad, pitch_rad, yaw_rad) = self.to_radians().into();
-        Rotation3::from_euler_angles(roll_rad, pitch_rad, yaw_rad)
-    }
-}
-
-#[derive(Clone, Copy, Serialize, Deserialize, Debug)]
-pub struct Position {
-    pub lat: f64,
-    pub lon: f64,
-}
-
-impl Position {
-    fn kingston() -> Self {
-        Self {
-            lat: 44.2187,
-            lon: -76.4747,
-        }
-    }
-}
-
-/// A serializable data structure used to construct a simulated sensor.
-#[derive(Clone, Copy, Serialize, Deserialize, Debug)]
-pub struct SensorParams {
+pub struct CameraParams {
     /// Size of a pixel on the simulated sensor in micrometers.
     pub pixel_size_um: (f64, f64),
 
@@ -97,39 +19,25 @@ pub struct SensorParams {
 
     /// The distance between the simulated sensor and the focal point along the +Z axis.
     pub focal_length_mm: f64,
-
-    /// The Euler angles of the simulated sensor in the ENU reference frame.
-    pub pose: Pose,
-
-    /// The position of the simulated sensor by lat lon.
-    pub position: Position,
-
-    /// The time point experienced by the simulated sensor in UTC.
-    pub time: DateTime<Utc>,
 }
 
-impl fmt::Display for SensorParams {
+impl fmt::Display for CameraParams {
     fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
         unimplemented!();
     }
 }
 
-impl Default for SensorParams {
+impl Default for CameraParams {
     fn default() -> Self {
         Self {
             pixel_size_um: (3.45, 3.45),
             sensor_size_px: (2448, 2048),
             focal_length_mm: 8.0,
-            pose: Pose::up(),
-            position: Position::kingston(),
-            time: "2025-06-13T16:26:47+00:00"
-                .parse::<DateTime<Utc>>()
-                .unwrap(),
         }
     }
 }
 
-impl SensorParams {
+impl CameraParams {
     pub fn num_pixels(&self) -> usize {
         (self.sensor_size_px.0 * self.sensor_size_px.1) as usize
     }
@@ -144,16 +52,10 @@ impl SensorParams {
             .flatten()
             .collect()
     }
-
-    /// Replaces the current pose.
-    pub fn with_pose(mut self, pose: Pose) -> Self {
-        self.pose = pose;
-        self
-    }
 }
 
 /// Represents a simulated sensor in the world.
-pub struct Sensor {
+pub struct Camera {
     pixel_size_mm: Vector3<f64>,
     sensor_size_px: Vector3<f64>,
     focal_point_mm: Vector3<f64>,
@@ -161,8 +63,8 @@ pub struct Sensor {
     solar_vector_rad: (f64, f64),
 }
 
-impl From<&SensorParams> for Sensor {
-    fn from(params: &SensorParams) -> Self {
+impl Camera {
+    pub fn new(params: &CameraParams, state: State) -> Self {
         // Convert pixel size to mm.
         let pixel_size_mm = Vector3::new(
             params.pixel_size_um.0 / 1000.,
@@ -180,20 +82,18 @@ impl From<&SensorParams> for Sensor {
         // Focal point is in the +z direction (optical axis).
         let focal_point_mm = Vector3::new(0., 0., params.focal_length_mm);
 
+        let (pose, position, time) = state.into_inner();
+
         // Given roll, pitch, yaw of the body frame wrt the ENU frame.
         // Given a vector U in the ENU frame, U in the body frame can be calculated using the rotation matrix.
-        let enu_to_body: Rotation3<_> = params.pose.into();
+        let enu_to_body: Rotation3<_> = pose.into();
 
         // Given a vector V in the body frame, V in the ENU frame can be calculated using the rotation matrix.
         let body_to_enu = enu_to_body.transpose();
 
         // Given a lon, lat, and time, compute the solar azimuth and zenith angle.
-        let solar_pos: SolarPos = spa::solar_position::<StdFloatOps>(
-            params.time,
-            params.position.lat,
-            params.position.lon,
-        )
-        .unwrap();
+        let solar_pos: SolarPos =
+            spa::solar_position::<StdFloatOps>(time, position.lat, position.lon).unwrap();
         let solar_vector_rad: (f64, f64) = (
             // Measured CW from north.
             solar_pos.azimuth,
@@ -211,9 +111,9 @@ impl From<&SensorParams> for Sensor {
     }
 }
 
-impl Sensor {
+impl Camera {
     /// Simulate a pixel using the Rayleigh sky model.
-    pub fn simulate_pixel(&self, pixel_location: &(u32, u32)) -> Measurement {
+    pub fn simulate_pixel(&self, pixel_location: &(u32, u32)) -> Ray {
         // Compute physical pixel location on image sensor.
         let pixel = Vector3::new(pixel_location.0 as f64, pixel_location.1 as f64, 0.);
         let pixel = pixel - self.sensor_size_px * 0.5;
@@ -261,12 +161,12 @@ impl Sensor {
 
         // let aop_rad = (body_e_vector.dot(&y_mer) / body_e_vector.dot(&x_mer)).atan();
 
-        Measurement::new(*pixel_location, aop_rad.to_degrees(), dop)
+        Ray::new(*pixel_location, Aop::from_rad(aop_rad), Dop::new(dop))
     }
 
     /// Simulates the specified pixels in parallel.
     /// Returns a vector of pixels in the same order they were provided.
-    pub fn par_simulate_pixels(&self, pixels: &Vec<(u32, u32)>) -> Vec<Measurement> {
+    pub fn par_simulate_pixels(&self, pixels: &Vec<(u32, u32)>) -> Vec<Ray> {
         pixels
             .par_iter()
             .map(|pixel| self.simulate_pixel(pixel))
@@ -277,38 +177,43 @@ impl Sensor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::state::{Pose, Position};
+    use chrono::prelude::*;
 
     /// Test simulation algorithm using regression.
     /// Using commit with hash 4019279...
     #[test]
     fn regress_simulate() {
-        let params = SensorParams {
+        let params = CameraParams {
             pixel_size_um: (3.45, 3.45),
             sensor_size_px: (2448, 2048),
             focal_length_mm: 8.0,
-            pose: Pose {
-                roll: 0.0,
-                pitch: 0.0,
-                yaw: 0.0,
-            },
-            position: Position {
+        };
+
+        let state = State::new(
+            Pose::zeros(),
+            Position {
                 lat: 44.2187,
                 lon: -76.4747,
             },
-            time: "2025-06-13T16:26:47+00:00"
+            "2025-06-13T16:26:47+00:00"
                 .parse::<DateTime<Utc>>()
                 .unwrap(),
-        };
+        );
 
-        let mms = vec![
-            Measurement::new((0, 0), -37.420423616444666, 0.0),
-            Measurement::new((2448, 0), -77.36102279318438, 0.0),
-            Measurement::new((0, 2048), 40.03047380377111, 0.0),
-            Measurement::new((2448, 2048), 62.28474307858949, 0.0),
+        let rays = vec![
+            Ray::new((0, 0), Aop::from_deg(-37.420423616444666), Dop::new(0.0)),
+            Ray::new((2448, 0), Aop::from_deg(-77.361022793184380), Dop::new(0.0)),
+            Ray::new((0, 2048), Aop::from_deg(40.030473803771110), Dop::new(0.0)),
+            Ray::new(
+                (2448, 2048),
+                Aop::from_deg(62.284743078589490),
+                Dop::new(0.0),
+            ),
         ];
 
-        let sensor = Sensor::from(&params);
-        let pixels: Vec<(u32, u32)> = mms.iter().map(|mm| mm.pixel_location).collect();
-        assert_eq!(mms, sensor.par_simulate_pixels(&pixels));
+        let cam = Camera::new(&params, state);
+        let pixels: Vec<(u32, u32)> = rays.iter().map(|ray| *ray.get_loc()).collect();
+        assert_eq!(rays, cam.par_simulate_pixels(&pixels));
     }
 }
