@@ -64,7 +64,7 @@ pub struct Camera {
 }
 
 impl Camera {
-    pub fn new(params: CameraParams, state: State) -> Self {
+    pub fn new(params: &CameraParams, state: State) -> Self {
         // Convert pixel size to mm.
         let pixel_size_mm = Vector3::new(
             params.pixel_size_um.0 / 1000.,
@@ -177,6 +177,8 @@ impl Camera {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::state::{Pose, Position};
+    use chrono::prelude::*;
 
     /// Test simulation algorithm using regression.
     /// Using commit with hash 4019279...
@@ -189,11 +191,7 @@ mod tests {
         };
 
         let state = State::new(
-            Pose {
-                roll: 0.0,
-                pitch: 0.0,
-                yaw: 0.0,
-            },
+            Pose::zeros(),
             Position {
                 lat: 44.2187,
                 lon: -76.4747,
@@ -214,7 +212,7 @@ mod tests {
             ),
         ];
 
-        let cam = Camera::new(params, state);
+        let cam = Camera::new(&params, state);
         let pixels: Vec<(u32, u32)> = rays.iter().map(|ray| *ray.get_loc()).collect();
         assert_eq!(rays, cam.par_simulate_pixels(&pixels));
     }

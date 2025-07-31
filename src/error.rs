@@ -2,13 +2,17 @@ use std::fmt;
 
 #[derive(Debug)]
 pub enum Error {
-    InvalidInput(String),
+    OddImgDim((u32, u32)),
+    EmptyRange,
+    NonFinite,
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Error::InvalidInput(err) => write!(f, "InvalidInput: {}", err),
+            Error::OddImgDim((x, y)) => write!(f, "odd image dimensions: {}x{}", x, y),
+            Error::EmptyRange => write!(f, "bounds define empty range"),
+            Error::NonFinite => write!(f, "float cannot be infinite or NaN"),
         }
     }
 }

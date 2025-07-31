@@ -1,7 +1,7 @@
 use chrono::prelude::*;
 use nalgebra::Rotation3;
 use rand::{
-    distr::{Distribution, StandardUniform},
+    distr::uniform::{Error, SampleBorrow, SampleUniform, UniformFloat, UniformSampler},
     Rng,
 };
 use serde::{Deserialize, Serialize};
@@ -27,18 +27,20 @@ impl State {
     }
 }
 
-// In degrees
-// ENU reference frame
-// Euler angles
 #[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq)]
 pub struct Pose {
-    pub roll: f64,
-    pub pitch: f64,
-    pub yaw: f64,
+    roll: f64,
+    pitch: f64,
+    yaw: f64,
 }
 
 impl Pose {
-    pub fn up() -> Self {
+    /// Create a new `Pose` from `roll`, `pitch`, and `yaw`.
+    pub fn new(roll: f64, pitch: f64, yaw: f64) -> Self {
+        Self { roll, pitch, yaw }
+    }
+
+    pub fn zeros() -> Self {
         Self {
             roll: 0.0,
             pitch: 0.0,
@@ -56,14 +58,69 @@ impl Pose {
     }
 }
 
-impl Distribution<Pose> for StandardUniform {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Pose {
-        Pose {
-            roll: rng.random_range(0.0..360.0),
-            pitch: rng.random_range(0.0..360.0),
-            yaw: rng.random_range(0.0..360.0),
-        }
+/// Sample random poses on a range.
+///
+/// Implemented following the (https://docs.rs/rand/latest/rand/distr/uniform/index.html)[documentation] for `rand`.
+///
+/// ```
+/// use rumpus::state::Pose;
+/// use rand::distr::{Distribution, Uniform};
+///
+/// let (low, high) = (Pose::new(-1.0, -1.0, 0.0), Pose::new(1.0, 1.0, 360.0));
+/// let uniform = Uniform::new(low, high).unwrap();
+/// let pose = uniform.sample(&mut rand::rng());
+/// ```
+#[derive(Clone)]
+pub struct UniformPose {
+    roll: UniformFloat<f64>,
+    pitch: UniformFloat<f64>,
+    yaw: UniformFloat<f64>,
+}
+
+impl UniformSampler for UniformPose {
+    type X = Pose;
+
+    fn new<B1, B2>(low: B1, high: B2) -> Result<Self, Error>
+    where
+        B1: SampleBorrow<Self::X> + Sized,
+        B2: SampleBorrow<Self::X> + Sized,
+    {
+        let (lr, lp, ly) = low.borrow().clone().into();
+        let (hr, hp, hy) = high.borrow().clone().into();
+
+        Ok(UniformPose {
+            roll: UniformFloat::<f64>::new(lr, hr)?,
+            pitch: UniformFloat::<f64>::new(lp, hp)?,
+            yaw: UniformFloat::<f64>::new(ly, hy)?,
+        })
     }
+
+    fn new_inclusive<B1, B2>(low: B1, high: B2) -> Result<Self, Error>
+    where
+        B1: SampleBorrow<Self::X> + Sized,
+        B2: SampleBorrow<Self::X> + Sized,
+    {
+        let (lr, lp, ly) = low.borrow().clone().into();
+        let (hr, hp, hy) = high.borrow().clone().into();
+
+        Ok(UniformPose {
+            roll: UniformFloat::<f64>::new_inclusive(lr, hr)?,
+            pitch: UniformFloat::<f64>::new_inclusive(lp, hp)?,
+            yaw: UniformFloat::<f64>::new_inclusive(ly, hy)?,
+        })
+    }
+
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Self::X {
+        Pose::new(
+            self.roll.sample(rng),
+            self.pitch.sample(rng),
+            self.yaw.sample(rng),
+        )
+    }
+}
+
+impl SampleUniform for Pose {
+    type Sampler = UniformPose;
 }
 
 impl From<(f64, f64, f64)> for Pose {

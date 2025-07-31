@@ -77,10 +77,10 @@ impl IntensityImage {
         let dims = (
             width
                 .checked_div(2)
-                .ok_or(Error::InvalidInput("image width is not even".into()))?,
+                .ok_or(Error::OddImgDim((width, height)))?,
             height
                 .checked_div(2)
-                .ok_or(Error::InvalidInput("image height is not even".into()))?,
+                .ok_or(Error::OddImgDim((width, height)))?,
         );
 
         let coords: Vec<(u32, u32)> = (0..dims.1)
