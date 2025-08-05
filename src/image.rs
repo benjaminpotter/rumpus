@@ -4,14 +4,37 @@ use crate::{
 };
 use rayon::prelude::*;
 
-pub struct IntensityPixel {
-    loc: (u32, u32),
+/// Stores four intensity measurements through orthogonal linear polarizers.
+pub struct StokesMeasurement {
     /// A metapixel is a group of four intensity pixels that have two sets of orthogonal linear polarizing filters.
     /// Each element in this buffer stores an intensity value in 0, 45, 90, 135 order.
-    inner: [f64; 4],
+    inner: (
+        IntensityMeasurement<I0>,
+        IntensityMeasurement<I45>,
+        IntensityMeasurement<I90>,
+        IntensityMeasurement<I35>,
+    ),
+
+    /// Stores the location that this measurement was taken.
+    loc: (u32, u32),
 }
 
-impl IntensityPixel {
+impl StokesMeasurement {
+    /// Build a `StokesMeasurement` from four intensity measurements through
+    /// orthogonal linear polarizers.
+    fn from_intensity_measurements(
+        i0: IntensityMeasurement<I0>,
+        i45: IntensityMeasurement<I45>,
+        i90: IntensityMeasurement<I90>,
+        i135: IntensityMeasurement<I35>,
+        loc: (u32, u32),
+    ) -> Self {
+        Self {
+            inner: (i0, i45, i90, i135),
+            loc,
+        }
+    }
+
     /// The Stokes vectors are computed by:
     /// ```text
     /// S_0 = (I_0 + I_45 + I_90 + I_135) / 2
@@ -20,9 +43,9 @@ impl IntensityPixel {
     /// ```
     fn to_stokes(&self) -> StokesVec {
         StokesVec::new(
-            (self.inner[0] + self.inner[1] + self.inner[2] + self.inner[3]) / 2.,
-            self.inner[0] - self.inner[2],
-            self.inner[1] - self.inner[3],
+            (self.inner.0 + self.inner.1 + self.inner.2 + self.inner.3) / 2.,
+            self.inner.0 - self.inner.2,
+            self.inner.1 - self.inner.3,
         )
     }
 }
@@ -33,8 +56,8 @@ impl IntensityPixel {
 /// linear polarizing filter. This measurement can determine properties about
 /// the polarization state of incident rays.
 pub struct IntensityImage {
-    /// Buffer of metapixels.
-    metapixels: Vec<IntensityPixel>,
+    /// Buffer of measurements.
+    measurements: Vec<StokesMeasurement>,
 }
 
 impl IntensityImage {
@@ -70,10 +93,6 @@ impl IntensityImage {
     /// | w(h-1) |
     /// ```
     pub fn from_bytes(width: u32, height: u32, bytes: &[u8]) -> Result<Self, Error> {
-        // TODO:
-        // - Allow dimensions to mismatch the bytes and do interpolation.
-        // - Maybe make another function for users that want this functionality.
-
         let dims = (
             width
                 .checked_div(2)
@@ -89,7 +108,13 @@ impl IntensityImage {
             .flatten()
             .collect();
 
-        let metapixels: Vec<IntensityPixel> = coords
+        // Iterate over rows
+        //   - Row is even (90, 135, 90 ...)
+        //   - Row is odd (45, 0, 45, ...)
+        //   - Create structure that holds f64 pixels
+        //   - Enables interpolation between pixels
+
+        let measurements: Vec<StokesMeasurement> = coords
             .into_par_iter()
             .map(|(x, y)| {
                 let i000 = ((x * 2 + 1) + (y * 2 + 1) * width) as usize;
@@ -98,7 +123,7 @@ impl IntensityImage {
                 let i135 = ((x * 2 + 1) + (y * 2 + 0) * width) as usize;
 
                 // FIXME: Catch problems with the size of `bytes`.
-                IntensityPixel {
+                StokesMeasurement {
                     loc: (x, y),
                     inner: [
                         bytes[i000] as f64,
@@ -110,7 +135,7 @@ impl IntensityImage {
             })
             .collect();
 
-        Ok(Self { metapixels })
+        Ok(Self { measurements })
     }
 
     pub fn rays(&self) -> ImageRays {
@@ -122,7 +147,7 @@ impl IntensityImage {
 
 /// An iterator over rays.
 pub struct ImageRays<'a> {
-    inner: std::slice::Iter<'a, IntensityPixel>,
+    inner: std::slice::Iter<'a, StokesMeasurement>,
 }
 
 impl<'a> Iterator for ImageRays<'a> {
@@ -136,6 +161,43 @@ impl<'a> Iterator for ImageRays<'a> {
 
 // All of RayIterator's functions are defined using Iterator.
 impl<'a> RayIterator for ImageRays<'a> {}
+
+struct I0;
+struct I45;
+struct I90;
+struct I135;
+
+struct IntensityMeasurement<Angle> {
+    value: f64,
+    _phan: std::marker::PhantomData<Angle>,
+}
+
+impl<Angle> IntensityMeasurement<Angle> {
+    fn new(value: f64) -> Self {
+        Self {
+            value,
+            _phan: std::marker::PhantomData,
+        }
+    }
+}
+
+/// Represents a dense set of intensity measurements taken at one linear
+/// polarization angle.
+struct PartialIntensityImage<Angle> {
+    pixels: Vec<IntensityMeasurement<Angle>>,
+    dims: (u32, u32),
+}
+
+impl<Angle> PartialIntensityImage<Angle> {
+    fn new(pixels: Vec<IntensityMeasurement<Angle>>, dims: (u32, u32)) -> Self {
+        Self { pixels, dims }
+    }
+
+    /// Returns a new `IntensityMeasurement` interpolated from `self`.
+    fn interp_at(&self, loc: (f64, f64)) -> Option<IntensityMeasurement<Angle>> {
+        None
+    }
+}
 
 #[cfg(test)]
 mod tests {
