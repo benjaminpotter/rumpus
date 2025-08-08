@@ -1,6 +1,10 @@
-use crate::{
+use super::{
     error::Error,
-    ray::{Ray, RayIterator, StokesVec},
+    iter::RayIterator,
+    light::{
+        ray::{Ray, RayLocation, RaySensor, SensorFrame},
+        stokes::StokesVec,
+    },
 };
 use rayon::prelude::*;
 
@@ -18,7 +22,7 @@ impl IntensityPixel {
     /// S_1 = I_0 - I_90
     /// S_2 = I_45 - I_135
     /// ```
-    fn to_stokes(&self) -> StokesVec {
+    fn to_stokes(&self) -> StokesVec<SensorFrame> {
         StokesVec::new(
             (self.inner[0] + self.inner[1] + self.inner[2] + self.inner[3]) / 2.,
             self.inner[0] - self.inner[2],
@@ -113,49 +117,62 @@ impl IntensityImage {
         Ok(Self { metapixels })
     }
 
-    pub fn rays(&self) -> ImageRays {
+    pub fn rays<'a, 'b>(&'a self, sensor: &'b RaySensor) -> ImageRays<'a, 'b> {
         ImageRays {
             inner: self.metapixels.iter(),
+            sensor,
         }
     }
 }
 
 /// An iterator over rays.
-pub struct ImageRays<'a> {
+pub struct ImageRays<'a, 'b> {
     inner: std::slice::Iter<'a, IntensityPixel>,
+    sensor: &'b RaySensor,
 }
 
-impl<'a> Iterator for ImageRays<'a> {
-    type Item = Ray;
+impl<'a, 'b> Iterator for ImageRays<'a, 'b> {
+    type Item = Ray<SensorFrame>;
     fn next(&mut self) -> Option<Self::Item> {
         let px = self.inner.next()?;
         let loc = px.loc.clone();
-        Some(Ray::from_stokes(loc, px.to_stokes()))
+        Some(Ray::from_stokes(
+            RayLocation::at_pixel(loc, self.sensor),
+            px.to_stokes(),
+        ))
     }
 }
 
 // All of RayIterator's functions are defined using Iterator.
-impl<'a> RayIterator for ImageRays<'a> {}
+impl<'a, 'b> RayIterator<SensorFrame> for ImageRays<'a, 'b> {}
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ray::{Aop, Dop, Ray};
+    use crate::light::{aop::Aop, dop::Dop};
     use image::{GrayImage, ImageReader};
+    use nalgebra::Vector2;
 
     #[test]
     fn first_ray() {
         let image = read_image();
         let (width, height) = image.dimensions();
+        let sensor = RaySensor::default();
         let ray = IntensityImage::from_bytes(width, height, &image.into_raw())
             .unwrap()
-            .rays()
+            .rays(&sensor)
             .next()
             .unwrap();
 
+        let sensor = RaySensor::default();
+
         assert_eq!(
             ray,
-            Ray::new((0, 0), Aop::from_deg(90.0), Dop::new(0.2222222222222222))
+            Ray::new(
+                RayLocation::at_pixel((0, 0), &sensor),
+                Aop::from_deg(90.0),
+                Dop::new(0.2222222222222222)
+            )
         );
     }
 

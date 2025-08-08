@@ -1,219 +1,186 @@
-use crate::{
-    ray::{Aop, Dop, Ray},
-    state::State,
+use super::{
+    light::{
+        aop::Aop,
+        dop::Dop,
+        ray::{GlobalFrame, Ray, RayLocation},
+    },
+    state::{Orientation, Position},
 };
-use nalgebra::{Rotation3, Vector3};
-use rayon::prelude::*;
-use serde::{Deserialize, Serialize};
+use chrono::{DateTime, Utc};
+use nalgebra::{Vector2, Vector3};
 use spa::{SolarPos, StdFloatOps};
-use std::fmt;
 
-/// A serializable data structure used to construct a simulated camera.
-#[derive(Clone, Copy, Serialize, Deserialize, Debug)]
-pub struct CameraParams {
-    /// Size of a pixel on the simulated sensor in micrometers.
-    pub pixel_size_um: (f64, f64),
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SkyPoint {
+    /// Azimuth angle clock-wise from +Y.
+    azi: f64,
 
-    /// The dimensions of the simulated sensor in number of pixels.
-    pub sensor_size_px: (u32, u32),
-
-    /// The distance between the simulated sensor and the focal point along the +Z axis.
-    pub focal_length_mm: f64,
+    /// Zenith angle from +Z in plane defined by +Z and azimuth.
+    zen: f64,
 }
 
-impl fmt::Display for CameraParams {
-    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        unimplemented!();
+impl SkyPoint {
+    pub fn new(azi: f64, zen: f64) -> Self {
+        Self { azi, zen }
     }
 }
 
-impl Default for CameraParams {
-    fn default() -> Self {
-        Self {
-            pixel_size_um: (3.45, 3.45),
-            sensor_size_px: (2448, 2048),
-            focal_length_mm: 8.0,
-        }
-    }
+#[derive(Clone, Copy)]
+pub struct Lens {
+    focal_length: f64,
 }
 
-impl CameraParams {
-    pub fn num_pixels(&self) -> usize {
-        (self.sensor_size_px.0 * self.sensor_size_px.1) as usize
-    }
-
-    pub fn pixels(&self) -> Vec<(u32, u32)> {
-        let width = self.sensor_size_px.0;
-        let height = self.sensor_size_px.1;
-
-        (0..height)
-            .into_iter()
-            .map(|row| (0..width).into_iter().map(move |col| (col, row)))
-            .flatten()
-            .collect()
+impl Lens {
+    pub fn new(focal_length: f64) -> Self {
+        Self { focal_length }
     }
 }
 
 /// Represents a simulated sensor in the world.
 pub struct Camera {
-    pixel_size_mm: Vector3<f64>,
-    sensor_size_px: Vector3<f64>,
-    focal_point_mm: Vector3<f64>,
-    body_to_enu: Rotation3<f64>,
-    solar_vector_rad: (f64, f64),
+    lens: Lens,
+    ort: Orientation,
 }
 
 impl Camera {
-    pub fn new(params: &CameraParams, state: State) -> Self {
-        // Convert pixel size to mm.
-        let pixel_size_mm = Vector3::new(
-            params.pixel_size_um.0 / 1000.,
-            params.pixel_size_um.1 / 1000.,
-            0.,
-        );
-
-        // Convert sensor size to floating point.
-        let sensor_size_px = Vector3::new(
-            (params.sensor_size_px.0) as f64,
-            (params.sensor_size_px.1) as f64,
-            0.,
-        );
-
-        // Focal point is in the +z direction (optical axis).
-        let focal_point_mm = Vector3::new(0., 0., params.focal_length_mm);
-
-        let (pose, position, time) = state.into_inner();
-
-        // Given roll, pitch, yaw of the body frame wrt the ENU frame.
-        // Given a vector U in the ENU frame, U in the body frame can be calculated using the rotation matrix.
-        let enu_to_body: Rotation3<_> = pose.into();
-
-        // Given a vector V in the body frame, V in the ENU frame can be calculated using the rotation matrix.
-        let body_to_enu = enu_to_body.transpose();
-
-        // Given a lon, lat, and time, compute the solar azimuth and zenith angle.
-        let solar_pos: SolarPos =
-            spa::solar_position::<StdFloatOps>(time, position.lat, position.lon).unwrap();
-        let solar_vector_rad: (f64, f64) = (
-            // Measured CW from north.
-            solar_pos.azimuth,
-            // Measured between zenith and sun's center.
-            solar_pos.zenith_angle,
-        );
-
-        Self {
-            pixel_size_mm,
-            sensor_size_px,
-            focal_point_mm,
-            body_to_enu,
-            solar_vector_rad,
-        }
+    pub fn new(lens: Lens, ort: Orientation) -> Self {
+        Self { lens, ort }
     }
 }
 
 impl Camera {
-    /// Simulate a pixel using the Rayleigh sky model.
-    pub fn simulate_pixel(&self, pixel_location: &(u32, u32)) -> Ray {
-        // Compute physical pixel location on image sensor.
-        let pixel = Vector3::new(pixel_location.0 as f64, pixel_location.1 as f64, 0.);
-        let pixel = pixel - self.sensor_size_px * 0.5;
-        let phys_loc = self.pixel_size_mm.component_mul(&pixel);
+    /// Simulate a ray from `ray_loc` using `model`.
+    pub fn simulate_ray(&self, ray_loc: RayLocation, model: &RayleighModel) -> Ray<GlobalFrame> {
+        let sp = self.trace_from_sensor(ray_loc.as_vec2());
+        Ray::new(
+            ray_loc,
+            model.get_aop(sp),
+            Dop::new(0.0),
+            // model.get_dop(ray_azimuth_rad, ray_zenith_rad),
+        )
+    }
 
+    /// Trace a point on an imaginary sensor through the lens and into the ENU
+    /// frame.
+    pub fn trace_from_sensor(&self, point: &Vector2<f64>) -> SkyPoint {
         // Trace a ray from the physical pixel location through the focal point.
         // This approach uses the pinhole camera model.
-        let body_ray = phys_loc + self.focal_point_mm;
+        let mut ray: Vector3<_> = Vector3::new(point.x, point.y, self.lens.focal_length);
 
         // Transform ray from body (sensor) frame into the ENU frame.
-        let enu_ray = self.body_to_enu * body_ray;
-        let enu_ray = enu_ray.normalize();
+        ray = self.ort.as_rot() * ray;
 
         // Compute the zenith and azimuth angles of the ray.
-        // Azimuth is CW from +Y.
-        // Zenith is angle from +Z in the plane defined by +Z and the ray.
-        let ray_azimuth_rad = enu_ray.x.atan2(enu_ray.y);
-        let ray_zenith_rad = enu_ray.z.acos();
-
-        // Apply Rayleigh sky model using zenith and azimuth of ray to compute AoP and DoP.
-        let (solar_azimuth_rad, solar_zenith_rad) = self.solar_vector_rad;
-
-        // TODO: Compute DoP using scattering angle.
-        let dop = 0.;
-        let aop_rad = ((ray_zenith_rad.sin() * solar_zenith_rad.cos()
-            - ray_zenith_rad.cos()
-                * (ray_azimuth_rad - solar_azimuth_rad).cos()
-                * solar_zenith_rad.sin())
-            / (ray_azimuth_rad - solar_azimuth_rad).sin()
-            / solar_zenith_rad.sin())
-        .atan();
-
-        // let z = solar_zenith_rad.cos();
-        // let a = (1. - z.powf(2.)).sqrt();
-        // let x = a * solar_azimuth_rad.sin();
-        // let y = a * solar_azimuth_rad.cos();
-        // let enu_solar_vector = Vector3::new(x, y, z);
-        // let enu_e_vector = enu_ray.cross(&enu_solar_vector).normalize();
-        // let body_e_vector = self.enu_to_body * enu_e_vector;
-
-        // let beta_rad = phys_loc.y.atan2(phys_loc.x);
-        // let z_mer = -body_ray;
-        // let y_mer = Vector3::new(-beta_rad.sin(), beta_rad.cos(), 0.);
-        // let x_mer = y_mer.cross(&z_mer);
-
-        // let aop_rad = (body_e_vector.dot(&y_mer) / body_e_vector.dot(&x_mer)).atan();
-
-        Ray::new(*pixel_location, Aop::from_rad(aop_rad), Dop::new(dop))
+        SkyPoint {
+            // Azimuth is CW from +Y.
+            azi: ray.x.atan2(ray.y),
+            // Zenith is angle from +Z in the plane defined by +Z and the ray.
+            zen: ray.normalize().z.acos(),
+        }
     }
 
-    /// Simulates the specified pixels in parallel.
-    /// Returns a vector of pixels in the same order they were provided.
-    pub fn par_simulate_pixels(&self, pixels: &Vec<(u32, u32)>) -> Vec<Ray> {
-        pixels
-            .par_iter()
-            .map(|pixel| self.simulate_pixel(pixel))
-            .collect()
+    /// Trace a sky point from the ENU frame into the body frame and through the
+    /// lens.
+    pub fn trace_from_sky(&self, sky_point: &SkyPoint) -> Vector2<f64> {
+        // Create a vector pointing to sky_point with arbitrary length.
+        // Let ||sp|| = 1
+        //
+        // Then,
+        // a = sin(zen)
+        //
+        // So,
+        // x = a * sin(azi)
+        // y = a * cos(azi)
+        // z = cos(zen)
+        let a = sky_point.zen.sin();
+        let sp = Vector3::new(
+            a * sky_point.azi.sin(),
+            a * sky_point.azi.cos(),
+            sky_point.zen.cos(),
+        );
+
+        // Rotate vector into body frame.
+        let mut sp_body: Vector3<_> = self.ort.as_rot().transpose() * sp;
+
+        // Set vector length based on focal length.
+        sp_body.set_magnitude(self.lens.focal_length / sky_point.zen.cos());
+
+        // Return the sensor point.
+        Vector2::new(sp_body.x, sp_body.y)
+    }
+}
+
+pub struct RayleighModel {
+    sun_pos: SkyPoint,
+}
+
+impl RayleighModel {
+    pub fn new(pos: Position, time: DateTime<Utc>) -> Self {
+        // Given a lon, lat, and time, compute the solar azimuth and zenith angle.
+        let solar_pos: SolarPos =
+            spa::solar_position::<StdFloatOps>(time, pos.lat, pos.lon).unwrap();
+
+        Self {
+            sun_pos: SkyPoint {
+                // Measured CW from north.
+                azi: solar_pos.azimuth,
+
+                // Measured between zenith and sun's center.
+                zen: solar_pos.zenith_angle,
+            },
+        }
+    }
+
+    pub fn get_aop(&self, sky_point: SkyPoint) -> Aop<GlobalFrame> {
+        Aop::from_rad(
+            ((sky_point.zen.sin() * self.sun_pos.zen.cos()
+                - sky_point.zen.cos()
+                    * (sky_point.azi - self.sun_pos.azi).cos()
+                    * self.sun_pos.zen.sin())
+                / (sky_point.azi - self.sun_pos.azi).sin()
+                / self.sun_pos.zen.sin())
+            .atan(),
+        )
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::{Pose, Position};
-    use chrono::prelude::*;
+    use nalgebra::{Rotation3, Vector2};
 
-    /// Test simulation algorithm using regression.
-    /// Using commit with hash 4019279...
     #[test]
-    fn regress_simulate() {
-        let params = CameraParams {
-            pixel_size_um: (3.45, 3.45),
-            sensor_size_px: (2448, 2048),
-            focal_length_mm: 8.0,
-        };
-
-        let state = State::new(
-            Pose::zeros(),
-            Position {
-                lat: 44.2187,
-                lon: -76.4747,
-            },
-            "2025-06-13T16:26:47+00:00"
-                .parse::<DateTime<Utc>>()
-                .unwrap(),
+    fn trace_from_optical_center() {
+        let cam = Camera::new(
+            Lens::new(8.0),
+            Orientation::new(Rotation3::from_euler_angles(0.0, 0.0, 0.0)),
         );
 
-        let rays = vec![
-            Ray::new((0, 0), Aop::from_deg(-37.420423616444666), Dop::new(0.0)),
-            Ray::new((2448, 0), Aop::from_deg(-77.361022793184380), Dop::new(0.0)),
-            Ray::new((0, 2048), Aop::from_deg(40.030473803771110), Dop::new(0.0)),
-            Ray::new(
-                (2448, 2048),
-                Aop::from_deg(62.284743078589490),
-                Dop::new(0.0),
-            ),
-        ];
+        let point = Vector2::new(0.0, 0.0);
+        assert_eq!(
+            cam.trace_from_sensor(&point),
+            SkyPoint { azi: 0.0, zen: 0.0 }
+        );
+    }
 
-        let cam = Camera::new(&params, state);
-        let pixels: Vec<(u32, u32)> = rays.iter().map(|ray| *ray.get_loc()).collect();
-        assert_eq!(rays, cam.par_simulate_pixels(&pixels));
+    #[test]
+    fn trace_from_zenith() {
+        let cam = Camera::new(
+            Lens::new(8.0),
+            Orientation::new(Rotation3::from_euler_angles(0.0, 0.0, 0.0)),
+        );
+        let point = SkyPoint { azi: 0.0, zen: 0.0 };
+        assert_eq!(cam.trace_from_sky(&point), Vector2::new(0.0, 0.0));
+    }
+
+    #[test]
+    fn trace_reversible() {
+        let cam = Camera::new(
+            Lens::new(8.0),
+            Orientation::new(Rotation3::from_euler_angles(0.0, 0.0, 0.0)),
+        );
+
+        let point = Vector2::new(0.0, 0.0);
+        assert_eq!(cam.trace_from_sky(&cam.trace_from_sensor(&point)), point);
     }
 }

@@ -1,10 +1,9 @@
-mod hough_transform;
+use super::{iter::RayIterator, light::ray::RayFrame};
+
+pub mod hough_transform;
 pub mod pattern_match;
 
-use crate::ray::RayIterator;
-pub use hough_transform::HoughTransform;
-
-pub trait Estimator {
+pub trait Estimator<Frame: RayFrame> {
     type Output;
-    fn estimate<I: RayIterator>(self, rays: I) -> Self::Output;
+    fn estimate<I: RayIterator<Frame>>(self, rays: I) -> Self::Output;
 }
