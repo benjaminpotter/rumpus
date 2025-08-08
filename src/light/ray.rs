@@ -1,18 +1,24 @@
 use super::{aop::Aop, dop::Dop, stokes::StokesVec};
 use nalgebra::Vector2;
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 pub trait RayFrame: Copy + Clone {}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct GlobalFrame;
 impl RayFrame for GlobalFrame {}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct SensorFrame;
 impl RayFrame for SensorFrame {}
 
 /// Describes the angle and degree of polarization for a single ray.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Ray<Frame: RayFrame> {
     /// Location of pixel that measured the ray.
     loc: RayLocation,
@@ -36,15 +42,15 @@ impl<Frame: RayFrame> Ray<Frame> {
         Self::new(loc, stokes.aop(), stokes.dop())
     }
 
-    pub fn get_loc(&self) -> &RayLocation {
+    pub fn loc(&self) -> &RayLocation {
         &self.loc
     }
 
-    pub fn get_aop(&self) -> &Aop<Frame> {
+    pub fn aop(&self) -> &Aop<Frame> {
         &self.angle
     }
 
-    pub fn get_dop(&self) -> &Dop {
+    pub fn dop(&self) -> &Dop {
         &self.degree
     }
 }
@@ -78,7 +84,8 @@ impl Ray<SensorFrame> {
 /// Represents the location that a `Ray` was measured.
 ///
 /// Location is with reference to the camera frame.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct RayLocation {
     inner: Vector2<f64>,
 }
@@ -102,6 +109,8 @@ impl RayLocation {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct RaySensor {
     /// Size of a pixel on the simulated sensor in millimeters.
     pixel_size: Vector2<f64>,
@@ -152,7 +161,7 @@ mod tests {
             .skip(1224 * 256)
             .take(3)
             .map(|ray| ray.into_global_frame(&zenith_loc))
-            .map(|ray| ray.get_aop().clone().degrees())
+            .map(|ray| ray.aop().clone().degrees())
             .collect();
 
         assert_eq!(
@@ -180,7 +189,7 @@ mod tests {
             .take(3)
             .map(|ray| ray.into_global_frame(&zenith_loc))
             .map(|ray| ray.into_sensor_frame(&zenith_loc))
-            .map(|ray| ray.get_aop().clone().degrees())
+            .map(|ray| ray.aop().clone().degrees())
             .collect();
 
         // Problematic due to floating point error accumulation.

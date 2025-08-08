@@ -10,7 +10,11 @@ use chrono::{DateTime, Utc};
 use nalgebra::{Vector2, Vector3};
 use spa::{SolarPos, StdFloatOps};
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct SkyPoint {
     /// Azimuth angle clock-wise from +Y.
     azi: f64,
@@ -25,7 +29,8 @@ impl SkyPoint {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Lens {
     focal_length: f64,
 }
@@ -37,6 +42,8 @@ impl Lens {
 }
 
 /// Represents a simulated sensor in the world.
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Camera {
     lens: Lens,
     ort: Orientation,
@@ -46,17 +53,15 @@ impl Camera {
     pub fn new(lens: Lens, ort: Orientation) -> Self {
         Self { lens, ort }
     }
-}
 
-impl Camera {
     /// Simulate a ray from `ray_loc` using `model`.
     pub fn simulate_ray(&self, ray_loc: RayLocation, model: &RayleighModel) -> Ray<GlobalFrame> {
         let sp = self.trace_from_sensor(ray_loc.as_vec2());
         Ray::new(
             ray_loc,
-            model.get_aop(sp),
+            model.aop(sp),
             Dop::new(0.0),
-            // model.get_dop(ray_azimuth_rad, ray_zenith_rad),
+            // model.dop(ray_azimuth_rad, ray_zenith_rad),
         )
     }
 
@@ -110,6 +115,8 @@ impl Camera {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct RayleighModel {
     sun_pos: SkyPoint,
 }
@@ -131,7 +138,7 @@ impl RayleighModel {
         }
     }
 
-    pub fn get_aop(&self, sky_point: SkyPoint) -> Aop<GlobalFrame> {
+    pub fn aop(&self, sky_point: SkyPoint) -> Aop<GlobalFrame> {
         Aop::from_rad(
             ((sky_point.zen.sin() * self.sun_pos.zen.cos()
                 - sky_point.zen.cos()
