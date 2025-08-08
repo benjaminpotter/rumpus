@@ -28,7 +28,7 @@ impl<Frame: RayFrame> AopFilter<Frame> {
 
 impl<Frame: RayFrame> RayPredicate<Frame> for AopFilter<Frame> {
     fn eval(&self, ray: &Ray<Frame>) -> bool {
-        self.center.in_thres(ray.get_aop(), self.thres)
+        self.center.in_thres(ray.aop(), self.thres)
     }
 }
 
@@ -45,7 +45,7 @@ impl DopFilter {
 
 impl<Frame: RayFrame> RayPredicate<Frame> for DopFilter {
     fn eval(&self, ray: &Ray<Frame>) -> bool {
-        self.min <= *ray.get_dop()
+        self.min <= *ray.dop()
     }
 }
 

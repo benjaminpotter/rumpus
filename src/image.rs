@@ -8,6 +8,7 @@ use super::{
 };
 use rayon::prelude::*;
 
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct IntensityPixel {
     loc: (u32, u32),
     /// A metapixel is a group of four intensity pixels that have two sets of orthogonal linear polarizing filters.
@@ -36,6 +37,7 @@ impl IntensityPixel {
 /// Represents an image where each pixel measures light intensity through a
 /// linear polarizing filter. This measurement can determine properties about
 /// the polarization state of incident rays.
+#[derive(Clone, Debug, PartialEq)]
 pub struct IntensityImage {
     /// Buffer of metapixels.
     metapixels: Vec<IntensityPixel>,
@@ -117,8 +119,8 @@ impl IntensityImage {
         Ok(Self { metapixels })
     }
 
-    pub fn rays<'a, 'b>(&'a self, sensor: &'b RaySensor) -> ImageRays<'a, 'b> {
-        ImageRays {
+    pub fn rays<'a, 'b>(&'a self, sensor: &'b RaySensor) -> Rays<'a, 'b> {
+        Rays {
             inner: self.metapixels.iter(),
             sensor,
         }
@@ -126,12 +128,13 @@ impl IntensityImage {
 }
 
 /// An iterator over rays.
-pub struct ImageRays<'a, 'b> {
+#[derive(Clone, Debug)]
+pub struct Rays<'a, 'b> {
     inner: std::slice::Iter<'a, IntensityPixel>,
     sensor: &'b RaySensor,
 }
 
-impl<'a, 'b> Iterator for ImageRays<'a, 'b> {
+impl<'a, 'b> Iterator for Rays<'a, 'b> {
     type Item = Ray<SensorFrame>;
     fn next(&mut self) -> Option<Self::Item> {
         let px = self.inner.next()?;
@@ -144,7 +147,7 @@ impl<'a, 'b> Iterator for ImageRays<'a, 'b> {
 }
 
 // All of RayIterator's functions are defined using Iterator.
-impl<'a, 'b> RayIterator<SensorFrame> for ImageRays<'a, 'b> {}
+impl<'a, 'b> RayIterator<SensorFrame> for Rays<'a, 'b> {}
 
 #[cfg(test)]
 mod tests {

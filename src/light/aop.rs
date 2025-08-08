@@ -1,10 +1,14 @@
 use super::ray::RayFrame;
 use std::f64::consts::FRAC_PI_2;
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 /// Describes the e-vector orientation of a ray.
 ///
 /// The angle of the e-vector must be between -90.0 and 90.0.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Aop<Frame: RayFrame> {
     /// The angle of the e-vector of the ray in degrees.
     angle: f64,

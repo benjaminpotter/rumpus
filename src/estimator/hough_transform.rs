@@ -38,7 +38,7 @@ impl HoughTransform {
     }
 
     fn ray_angle(&self, ray: Ray<GlobalFrame>) -> f64 {
-        let loc = *ray.get_loc().as_vec2();
+        let loc = *ray.loc().as_vec2();
         (loc.y / loc.x).atan().to_degrees()
     }
 }

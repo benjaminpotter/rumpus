@@ -3,9 +3,12 @@ use rand::{
     distr::uniform::{Error, SampleBorrow, SampleUniform, UniformFloat, UniformSampler},
     Rng,
 };
+
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Orientation {
     inner: Rotation3<f64>,
 }
@@ -93,7 +96,8 @@ impl SampleUniform for Orientation {
     type Sampler = UniformOrientation;
 }
 
-#[derive(Clone, Copy, Serialize, Deserialize, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Position {
     pub lat: f64,
     pub lon: f64,

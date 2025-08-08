@@ -45,14 +45,14 @@ impl<S: Searcher> Estimator<SensorFrame> for PatternMatch<S> {
                 let loss = rays
                     .par_iter()
                     .map(|ray| {
-                        (*ray.get_aop()
+                        (*ray.aop()
                             - *camera
-                                .simulate_ray(ray.get_loc().clone(), &self.model)
+                                .simulate_ray(ray.loc().clone(), &self.model)
                                 .into_sensor_frame(&zen_loc)
-                                .get_aop())
+                                .aop())
                         .into_inner()
                         .powf(2.)
-                            / (*ray.get_dop()).into_inner()
+                            / (*ray.dop()).into_inner()
                     })
                     .sum::<f64>()
                     / rays.len() as f64;

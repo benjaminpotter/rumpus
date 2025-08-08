@@ -75,7 +75,7 @@ mod tests {
         );
 
         for ray in rays {
-            assert_eq!(ray, cam.simulate_ray(ray.get_loc().clone(), &model));
+            assert_eq!(ray, cam.simulate_ray(ray.loc().clone(), &model));
         }
     }
 }
