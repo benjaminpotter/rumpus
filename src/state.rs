@@ -1,4 +1,3 @@
-use chrono::prelude::*;
 use nalgebra::Rotation3;
 use rand::{
     distr::uniform::{Error, SampleBorrow, SampleUniform, UniformFloat, UniformSampler},
@@ -6,89 +5,60 @@ use rand::{
 };
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, Serialize, Deserialize, Debug)]
-pub struct State {
-    pose: Pose,
-    position: Position,
-    time: DateTime<Utc>,
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Orientation {
+    inner: Rotation3<f64>,
 }
 
-impl State {
-    pub fn new(pose: Pose, position: Position, time: DateTime<Utc>) -> Self {
-        Self {
-            pose,
-            position,
-            time,
-        }
+impl Orientation {
+    /// Create a new `Orientation` from `roll`, `pitch`, and `yaw` in degrees.
+    pub fn new(inner: Rotation3<f64>) -> Self {
+        Self { inner }
     }
 
-    pub fn into_inner(self) -> (Pose, Position, DateTime<Utc>) {
-        (self.pose, self.position, self.time)
-    }
-}
-
-#[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq)]
-pub struct Pose {
-    roll: f64,
-    pitch: f64,
-    yaw: f64,
-}
-
-impl Pose {
-    /// Create a new `Pose` from `roll`, `pitch`, and `yaw`.
-    pub fn new(roll: f64, pitch: f64, yaw: f64) -> Self {
-        Self { roll, pitch, yaw }
+    pub fn as_rot(&self) -> &Rotation3<f64> {
+        &self.inner
     }
 
-    pub fn zeros() -> Self {
-        Self {
-            roll: 0.0,
-            pitch: 0.0,
-            yaw: 0.0,
-        }
-    }
-
-    // TODO: Properly handle radians...
-    pub fn to_radians(&self) -> Self {
-        Self {
-            roll: self.roll.to_radians(),
-            pitch: self.pitch.to_radians(),
-            yaw: self.yaw.to_radians(),
-        }
+    /// Returns the `Orientation` as a roll, pitch, yaw tuple.
+    pub fn euler_angles(&self) -> (f64, f64, f64) {
+        self.inner.euler_angles()
     }
 }
 
-/// Sample random poses on a range.
+/// Sample random orientations on a range.
 ///
 /// Implemented following the (https://docs.rs/rand/latest/rand/distr/uniform/index.html)[documentation] for `rand`.
 ///
 /// ```
-/// use rumpus::state::Pose;
+/// use rumpus::state::Orientation;
+/// use nalgebra::Rotation3;
 /// use rand::distr::{Distribution, Uniform};
 ///
-/// let (low, high) = (Pose::new(-1.0, -1.0, 0.0), Pose::new(1.0, 1.0, 360.0));
+/// let low = Orientation::new(Rotation3::from_euler_angles(-1.0, -1.0, 0.0));
+/// let high =  Orientation::new(Rotation3::from_euler_angles(1.0, 1.0, 360.0));
 /// let uniform = Uniform::new(low, high).unwrap();
-/// let pose = uniform.sample(&mut rand::rng());
+/// let orientation= uniform.sample(&mut rand::rng());
 /// ```
 #[derive(Clone)]
-pub struct UniformPose {
+pub struct UniformOrientation {
     roll: UniformFloat<f64>,
     pitch: UniformFloat<f64>,
     yaw: UniformFloat<f64>,
 }
 
-impl UniformSampler for UniformPose {
-    type X = Pose;
+impl UniformSampler for UniformOrientation {
+    type X = Orientation;
 
     fn new<B1, B2>(low: B1, high: B2) -> Result<Self, Error>
     where
         B1: SampleBorrow<Self::X> + Sized,
         B2: SampleBorrow<Self::X> + Sized,
     {
-        let (lr, lp, ly) = low.borrow().clone().into();
-        let (hr, hp, hy) = high.borrow().clone().into();
+        let (lr, lp, ly) = low.borrow().as_rot().euler_angles();
+        let (hr, hp, hy) = high.borrow().as_rot().euler_angles();
 
-        Ok(UniformPose {
+        Ok(UniformOrientation {
             roll: UniformFloat::<f64>::new(lr, hr)?,
             pitch: UniformFloat::<f64>::new(lp, hp)?,
             yaw: UniformFloat::<f64>::new(ly, hy)?,
@@ -100,10 +70,10 @@ impl UniformSampler for UniformPose {
         B1: SampleBorrow<Self::X> + Sized,
         B2: SampleBorrow<Self::X> + Sized,
     {
-        let (lr, lp, ly) = low.borrow().clone().into();
-        let (hr, hp, hy) = high.borrow().clone().into();
+        let (lr, lp, ly) = low.borrow().as_rot().euler_angles();
+        let (hr, hp, hy) = high.borrow().as_rot().euler_angles();
 
-        Ok(UniformPose {
+        Ok(UniformOrientation {
             roll: UniformFloat::<f64>::new_inclusive(lr, hr)?,
             pitch: UniformFloat::<f64>::new_inclusive(lp, hp)?,
             yaw: UniformFloat::<f64>::new_inclusive(ly, hy)?,
@@ -111,36 +81,16 @@ impl UniformSampler for UniformPose {
     }
 
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Self::X {
-        Pose::new(
-            self.roll.sample(rng),
-            self.pitch.sample(rng),
-            self.yaw.sample(rng),
-        )
+        Orientation::new(Rotation3::from_euler_angles(
+            self.roll.sample(rng).to_radians(),
+            self.pitch.sample(rng).to_radians(),
+            self.yaw.sample(rng).to_radians(),
+        ))
     }
 }
 
-impl SampleUniform for Pose {
-    type Sampler = UniformPose;
-}
-
-impl From<(f64, f64, f64)> for Pose {
-    fn from(tuple: (f64, f64, f64)) -> Self {
-        let (roll, pitch, yaw) = tuple;
-        Self { roll, pitch, yaw }
-    }
-}
-
-impl Into<(f64, f64, f64)> for Pose {
-    fn into(self) -> (f64, f64, f64) {
-        (self.roll, self.pitch, self.yaw)
-    }
-}
-
-impl Into<Rotation3<f64>> for Pose {
-    fn into(self) -> Rotation3<f64> {
-        let (roll_rad, pitch_rad, yaw_rad) = self.to_radians().into();
-        Rotation3::from_euler_angles(roll_rad, pitch_rad, yaw_rad)
-    }
+impl SampleUniform for Orientation {
+    type Sampler = UniformOrientation;
 }
 
 #[derive(Clone, Copy, Serialize, Deserialize, Debug)]
