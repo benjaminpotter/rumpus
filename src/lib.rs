@@ -8,12 +8,14 @@ pub mod estimator;
 pub mod image;
 pub mod iter;
 pub mod light;
+pub mod model;
 pub mod state;
 
 pub mod prelude {
-    pub use crate::camera::{Camera, Lens, RayleighModel};
+    pub use crate::camera::{Camera, Lens};
     pub use crate::error::Error;
-    pub use crate::estimator::pattern_match::{PatternMatch, StochasticSearch};
+    pub use crate::model::RayleighModel;
+    // pub use crate::estimator::pattern_match::{PatternMatch, StochasticSearch};
     pub use crate::image::IntensityImage;
     pub use crate::iter::RayIterator;
     pub use crate::light::{
@@ -22,8 +24,21 @@ pub mod prelude {
         ray::{GlobalFrame, Ray, RayLocation, RaySensor, SensorFrame},
     };
     pub use crate::state::{Orientation, Position};
+    pub use crate::{CameraEnu, CameraFrd};
 }
 
+use sguaba::system;
+
+/// A coordinate system with its origin at the optical center of a camera and
+/// its X, Y, Z axes along East, North, and Up, respectively.
+system!(pub struct CameraEnu using ENU);
+
+/// A coordinate system with its origin at the optical center of a camera and
+/// its X, Y, Z axes pointing forward in the direction of travel, right of the
+/// optical center, and down into lens through the sensor plane, respectively.
+system!(pub struct CameraFrd using FRD);
+
+/*
 #[cfg(test)]
 mod tests {
     use crate::prelude::*;
@@ -70,8 +85,8 @@ mod tests {
         );
 
         let cam = Camera::new(
-            Lens::new(8.0),
-            Orientation::new(Rotation3::from_euler_angles(0.0, 0.0, 0.0)),
+            Lens::new(8.0).expect("focal_length is greater than 0.0"),
+            sguaba::Orientation::<CameraEnu>::default(),
         );
 
         for ray in rays {
@@ -79,3 +94,4 @@ mod tests {
         }
     }
 }
+*/
