@@ -1,6 +1,6 @@
 use super::{iter::RayIterator, light::ray::RayFrame};
 
-pub mod hough_transform;
+// pub mod hough_transform;
 // pub mod pattern_match;
 
 pub trait Estimator<Frame: RayFrame> {

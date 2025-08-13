@@ -1,5 +1,5 @@
 use super::ray::RayFrame;
-use std::f64::consts::FRAC_PI_2;
+use uom::si::f64::Angle;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -10,79 +10,61 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Aop<Frame: RayFrame> {
-    /// The angle of the e-vector of the ray in degrees.
-    angle: f64,
+    /// The angle of the e-vector of the ray.
+    angle: Angle,
     _phan: std::marker::PhantomData<Frame>,
 }
 
 impl<Frame: RayFrame> Aop<Frame> {
-    /// Creates a new `Aop` from `angle` given in radians.
+    /// Creates a new `Aop` from `angle`.
     ///
-    /// Panics if `angle` is not between -PI/2 and PI/2.
-    pub fn from_rad(angle: f64) -> Self {
-        assert!(-FRAC_PI_2 <= angle && angle <= FRAC_PI_2);
-        Self::from_deg(angle.to_degrees())
-    }
+    /// Returns `None` if `angle` is not between -90 and 90.
+    pub fn from_angle(angle: Angle) -> Option<Self> {
+        if !is_valid(angle) {
+            return None;
+        }
 
-    /// Creates a new `Aop` from `angle` given in degrees.
-    ///
-    /// Panics if `angle` is not between -90.0 and 90.0.
-    pub fn from_deg(angle: f64) -> Self {
-        assert!(-90.0 <= angle && angle <= 90.0);
-        Self {
+        Some(Self {
             angle,
             _phan: std::marker::PhantomData,
-        }
+        })
     }
 
-    /// Creates a new `Aop` from `angle` given in degrees causing values not
-    /// between -90.0 and 90.0 to be wrapped.
-    pub fn from_deg_wrap(mut angle: f64) -> Self {
-        while angle < -90.0 {
-            angle += 180.0;
+    /// Creates a new `Aop` from `angle` wrapping into -90.0 and 90.0 to be wrapped.
+    pub fn from_angle_wrapped(mut angle: Angle) -> Self {
+        while angle > Angle::HALF_TURN / 2. {
+            angle -= Angle::HALF_TURN;
         }
 
-        while angle > 90.0 {
-            angle -= 180.0;
+        while angle < -Angle::HALF_TURN / 2. {
+            angle += Angle::HALF_TURN;
         }
 
-        Self::from_deg(angle)
+        // Expect is enforced by the while loops above.
+        Self::from_angle(angle).expect("angle is within range -90 to 90")
     }
 
     /// Returns true if `other` is within `thres` of `self` inclusive and
     /// handling wrapping.
-    pub fn in_thres(&self, other: &Aop<Frame>, thres: f64) -> bool {
+    pub fn in_thres(&self, other: &Aop<Frame>, thres: Angle) -> bool {
         (*self - *other).angle.abs() <= thres
     }
 
-    /// Returns a raw `f64` angle in degrees.
-    pub fn degrees(&self) -> f64 {
+    pub fn into_inner(self) -> Angle {
         self.angle
     }
+}
 
-    /// Returns a raw `f64` angle in radians.
-    pub fn radians(&self) -> f64 {
-        self.angle.to_radians()
-    }
-
-    pub fn into_inner(self) -> f64 {
-        self.angle
-    }
+/// Returns `true` if `angle` is between -90 and 90, `false` otherwise.
+fn is_valid(angle: Angle) -> bool {
+    -Angle::HALF_TURN / 2. <= angle && angle <= Angle::HALF_TURN / 2.
 }
 
 impl<Frame: RayFrame> std::ops::Add for Aop<Frame> {
     type Output = Self;
 
     fn add(self, other: Self) -> Self::Output {
-        Self::from_deg_wrap(self.angle + other.angle)
-    }
-}
-
-impl<Frame: RayFrame> std::ops::Add<f64> for Aop<Frame> {
-    type Output = Self;
-
-    fn add(self, other: f64) -> Self::Output {
-        Self::from_deg_wrap(self.angle + other)
+        Self::from_angle_wrapped(self.angle + other.angle)
     }
 }
 
@@ -90,15 +72,7 @@ impl<Frame: RayFrame> std::ops::Sub for Aop<Frame> {
     type Output = Self;
 
     fn sub(self, other: Self) -> Self::Output {
-        Self::from_deg_wrap(self.angle - other.angle)
-    }
-}
-
-impl<Frame: RayFrame> std::ops::Sub<f64> for Aop<Frame> {
-    type Output = Self;
-
-    fn sub(self, other: f64) -> Self::Output {
-        Self::from_deg_wrap(self.angle - other)
+        Self::from_angle_wrapped(self.angle - other.angle)
     }
 }
 
@@ -106,80 +80,73 @@ impl<Frame: RayFrame> std::ops::Sub<f64> for Aop<Frame> {
 mod tests {
     use super::*;
     use crate::light::ray::GlobalFrame;
-    use std::f64::consts::{FRAC_PI_4, PI};
+    use approx::relative_eq;
+    use quickcheck::quickcheck;
+    use rstest::rstest;
+    use uom::si::angle::{degree, radian};
 
-    #[test]
-    fn create_aop_from_rad() {
-        assert_eq!(45.0, Aop::<GlobalFrame>::from_rad(FRAC_PI_4).angle);
+    fn a(angle: f64) -> Angle {
+        Angle::new::<degree>(angle)
     }
 
-    #[test]
-    #[should_panic]
-    fn create_invalid_aop() {
-        assert_eq!(180.0, Aop::<GlobalFrame>::from_rad(PI).angle);
-    }
+    quickcheck! {
+        fn aop_from_wrapped(angle: i8) -> bool {
+            // Will panic if it tries to create an invalid Aop.
+            // Should never panic due to wrapping.
+            Aop::<GlobalFrame>::from_angle_wrapped(a(angle as f64));
 
-    #[test]
-    fn add_aop() {
-        assert_eq!(
-            Aop::<GlobalFrame>::from_deg(1.0),
-            Aop::<GlobalFrame>::from_deg(90.0) + Aop::from_deg(-89.0)
-        );
-    }
-
-    #[test]
-    fn add_aop_with_f64() {
-        assert_eq!(
-            Aop::<GlobalFrame>::from_deg(1.0),
-            Aop::<GlobalFrame>::from_deg(-90.0) - 89.0
-        );
-    }
-
-    #[test]
-    fn sub_aop() {
-        assert_eq!(
-            Aop::<GlobalFrame>::from_deg(1.0),
-            Aop::<GlobalFrame>::from_deg(-90.0) - Aop::from_deg(89.0)
-        );
-
-        assert_eq!(
-            Aop::<GlobalFrame>::from_deg(0.0),
-            Aop::<GlobalFrame>::from_deg(-90.0) - Aop::from_deg(90.0)
-        );
-
-        assert_eq!(
-            Aop::<GlobalFrame>::from_deg(0.0),
-            Aop::<GlobalFrame>::from_deg(-90.0) - Aop::from_deg(-90.0)
-        );
-    }
-
-    #[test]
-    fn sub_aop_with_f64() {
-        assert_eq!(
-            Aop::<GlobalFrame>::from_deg(1.0),
-            Aop::<GlobalFrame>::from_deg(-90.0) - 89.0
-        );
-    }
-
-    #[test]
-    fn threshold_aop() {
-        const THRES: f64 = 0.1;
-        let center = Aop::<GlobalFrame>::from_deg(90.0);
-
-        for ref case in vec![
-            Aop::<GlobalFrame>::from_deg(89.90),
-            Aop::<GlobalFrame>::from_deg(-90.0),
-            Aop::<GlobalFrame>::from_deg(-89.90),
-        ] {
-            assert_eq!(true, center.in_thres(case, THRES));
+            // If we didn't panic, call this test a success.
+            true
         }
+    }
 
-        for ref case in vec![
-            Aop::<GlobalFrame>::from_deg(89.89),
-            Aop::<GlobalFrame>::from_deg(45.0),
-            Aop::<GlobalFrame>::from_deg(-89.89),
-        ] {
-            assert_eq!(false, center.in_thres(case, THRES));
-        }
+    #[rstest]
+    #[case(a(180.0))]
+    #[case(a(91.0))]
+    fn invalid_aop(#[case] angle: Angle) {
+        assert_eq!(Aop::<GlobalFrame>::from_angle(angle), None,);
+    }
+
+    #[rstest]
+    #[case(a(90.0), a(-89.0), a(1.0))]
+    fn add_aop(#[case] lhs: Angle, #[case] rhs: Angle, #[case] sum: Angle) {
+        let result = Aop::<GlobalFrame>::from_angle(lhs).unwrap() + Aop::from_angle(rhs).unwrap();
+        assert!(relative_eq!(
+            result.into_inner().get::<radian>(),
+            sum.get::<radian>(),
+        ));
+    }
+
+    #[rstest]
+    #[case(a(-90.0), a(89.0), a(1.0))]
+    #[case(a(-90.0), a(90.0), a(0.0))]
+    #[case(a(-90.0), a(-90.0), a(0.0))]
+    fn sub_aop(#[case] lhs: Angle, #[case] rhs: Angle, #[case] dif: Angle) {
+        let result = Aop::<GlobalFrame>::from_angle(lhs).unwrap() - Aop::from_angle(rhs).unwrap();
+        assert!(relative_eq!(
+            result.into_inner().get::<radian>(),
+            dif.get::<radian>()
+        ));
+    }
+
+    #[rstest]
+    #[case(a(90.0), a(89.9), a(0.1), true)]
+    #[case(a(90.0), a(-90.0), a(0.1), true)]
+    #[case(a(90.0), a(-89.9), a(0.1), true)]
+    #[case(a(90.0), a(89.89), a(0.1), false)]
+    #[case(a(90.0), a(45.0), a(0.1), false)]
+    #[case(a(90.0), a(-89.89), a(0.1), false)]
+    fn threshold_aop(
+        #[case] center: Angle,
+        #[case] case: Angle,
+        #[case] thres: Angle,
+        #[case] in_thres: bool,
+    ) {
+        assert_eq!(
+            Aop::<GlobalFrame>::from_angle(center)
+                .unwrap()
+                .in_thres(&Aop::<GlobalFrame>::from_angle(case).unwrap(), thres,),
+            in_thres
+        );
     }
 }

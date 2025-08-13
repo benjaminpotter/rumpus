@@ -54,22 +54,11 @@ impl SkyModel {
         let solar_zenith = Angle::HALF_TURN / 2. - self.solar_bearing.elevation();
         let azimuth = bearing.azimuth();
         let zenith = Angle::HALF_TURN / 2. - bearing.elevation();
-
-        dbg!(((zenith.sin() * solar_zenith.cos()
+        let angle = (zenith.sin() * solar_zenith.cos()
             - zenith.cos() * (azimuth - solar_azimuth).cos() * solar_zenith.sin())
-            / (azimuth - solar_azimuth).sin()
-            / solar_zenith.sin())
-        .atan()
-        .get::<radian>());
+        .atan2((azimuth - solar_azimuth).sin() * solar_zenith.sin());
 
-        Aop::from_rad(
-            ((zenith.sin() * solar_zenith.cos()
-                - zenith.cos() * (azimuth - solar_azimuth).cos() * solar_zenith.sin())
-                / (azimuth - solar_azimuth).sin()
-                / solar_zenith.sin())
-            .atan()
-            .get::<radian>(),
-        )
+        Aop::from_angle(angle).expect("model to return an angle in the correct range")
     }
 }
 
@@ -83,13 +72,13 @@ mod tests {
     #[rstest]
     #[case(false, Angle::new::<degree>(0.1))]
     #[case(true, Angle::new::<degree>(0.1))]
-    fn solar_meridian(#[case] flip_azimuth: bool, #[case] elevation: Angle) {
+    fn solar_meridian_ortho_aop(#[case] flip_azimuth: bool, #[case] elevation: Angle) {
         let azimuth = match flip_azimuth {
             true => Angle::new::<degree>(180.0),
             false => Angle::new::<degree>(0.0),
         };
 
-        relative_eq!(
+        assert!(relative_eq!(
             SkyModel::from_solar_bearing(
                 Bearing::<CameraEnu>::builder()
                     .azimuth(Angle::new::<degree>(0.0))
@@ -101,12 +90,13 @@ mod tests {
                 Bearing::<CameraEnu>::builder()
                     .azimuth(azimuth)
                     .elevation(elevation)
-                    .expect("solar elevation should be on the range -90 to 90")
+                    .expect("elevation should be on the range -90 to 90")
                     .build(),
             )
             .into_inner()
+            .get::<degree>()
             .abs(),
             90.0
-        );
+        ));
     }
 }

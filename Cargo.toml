@@ -12,7 +12,6 @@ spa = "0.5.1"
 serde = { version="1.0", features=["derive"], optional=true }
 sguaba = "0.9.4"
 uom = "0.37.0"
-rstest = "0.26.1"
 
 [features]
 serde = ["dep:serde", "nalgebra/serde-serialize" ]
@@ -22,4 +21,5 @@ rand_chacha = "0.9.0"
 image = { version="0.25.6", features=["rayon"] }
 quickcheck = "1.0.3"
 approx = "0.5.1"
+rstest = "0.26.1"
 

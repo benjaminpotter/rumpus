@@ -21,7 +21,7 @@ pub mod prelude {
     pub use crate::light::{
         aop::Aop,
         dop::Dop,
-        ray::{GlobalFrame, Ray, RayLocation, RaySensor, SensorFrame},
+        ray::{GlobalFrame, Ray, RaySensor, SensorFrame},
     };
     pub use crate::state::{Orientation, Position};
     pub use crate::{CameraEnu, CameraFrd};
@@ -29,13 +29,13 @@ pub mod prelude {
 
 use sguaba::system;
 
-/// A coordinate system with its origin at the optical center of a camera and
-/// its X, Y, Z axes along East, North, and Up, respectively.
+// A coordinate system with its origin at the optical center of a camera and
+// its X, Y, Z axes along East, North, and Up, respectively.
 system!(pub struct CameraEnu using ENU);
 
-/// A coordinate system with its origin at the optical center of a camera and
-/// its X, Y, Z axes pointing forward in the direction of travel, right of the
-/// optical center, and down into lens through the sensor plane, respectively.
+// A coordinate system with its origin at the optical center of a camera and
+// its X, Y, Z axes pointing forward in the direction of travel, right of the
+// optical center, and down into lens through the sensor plane, respectively.
 system!(pub struct CameraFrd using FRD);
 
 /*

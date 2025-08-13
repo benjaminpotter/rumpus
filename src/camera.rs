@@ -1,7 +1,7 @@
 use super::{CameraEnu, CameraFrd};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-use sguaba::{coordinate, engineering::Orientation, system, Bearing, Coordinate, Vector};
+use sguaba::{coordinate, engineering::Orientation, Bearing, Coordinate, Vector};
 use uom::{si::f64::*, ConstZero};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -43,7 +43,7 @@ impl Camera {
 
         // Trace a ray from the physical pixel location through the focal point.
         // This approach uses the pinhole camera model.
-        let mut ray_in_frd: Coordinate<CameraFrd> = coord
+        let ray_in_frd: Coordinate<CameraFrd> = coord
             + Vector::<CameraFrd>::builder()
                 .frd_front(Length::ZERO)
                 .frd_right(Length::ZERO)
