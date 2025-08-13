@@ -24,7 +24,7 @@ impl IntensityPixel {
     /// S_1 = I_0 - I_90
     /// S_2 = I_45 - I_135
     /// ```
-    fn to_stokes(&self) -> StokesVec<SensorFrame> {
+    fn stokes(&self) -> StokesVec<SensorFrame> {
         StokesVec::new(
             (self.inner[0] + self.inner[1] + self.inner[2] + self.inner[3]) / 2.,
             self.inner[0] - self.inner[2],
@@ -87,18 +87,16 @@ impl IntensityImage {
             .ok_or(Error::OddImgDim((width, height)))?;
 
         let coords: Vec<(u16, u16)> = (0..meta_height)
-            .into_iter()
-            .map(|y| (0..meta_width).into_iter().map(move |x| (x, y)))
-            .flatten()
+            .flat_map(|y| (0..meta_width).map(move |x| (x, y)))
             .collect();
 
         let metapixels: Vec<IntensityPixel> = coords
             .into_par_iter()
             .map(|(x, y)| {
-                let i000 = ((x * 2 + 1) + (y * 2 + 1) * width) as usize;
-                let i045 = ((x * 2 + 0) + (y * 2 + 1) * width) as usize;
-                let i090 = ((x * 2 + 0) + (y * 2 + 0) * width) as usize;
-                let i135 = ((x * 2 + 1) + (y * 2 + 0) * width) as usize;
+                let i000 = ((x as usize * 2 + 1) + (y as usize * 2 + 1) * width as usize);
+                let i045 = ((x as usize * 2) + (y as usize * 2 + 1) * width as usize);
+                let i090 = ((x as usize * 2) + (y as usize * 2) * width as usize);
+                let i135 = ((x as usize * 2 + 1) + (y as usize * 2) * width as usize);
 
                 // FIXME: Catch problems with the size of `bytes`.
                 IntensityPixel {
@@ -147,7 +145,7 @@ impl<'a> Iterator for Rays<'a> {
                 // parent IntensityImage which guarantees that all pixel
                 // locations are inside the RaySensor bounds.
                 .expect("sensor dimensions should match image dimensions"),
-            px.to_stokes(),
+            px.stokes(),
         ))
     }
 }

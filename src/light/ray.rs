@@ -94,9 +94,9 @@ impl Ray<GlobalFrame> {
     /// to the global up direction.
     pub fn into_sensor_frame(
         self,
-        zenith_coord: &Coordinate<CameraFrd>,
+        zenith_coord: Coordinate<CameraFrd>,
     ) -> Option<Ray<SensorFrame>> {
-        let offset = self.angle_to(*zenith_coord)?;
+        let offset = self.angle_to(zenith_coord)?;
         let angle = self.angle.into_inner() + offset;
 
         Some(Ray::new(
@@ -116,9 +116,9 @@ impl Ray<SensorFrame> {
     /// to the global up direction.
     pub fn into_global_frame(
         self,
-        zenith_coord: &Coordinate<CameraFrd>,
+        zenith_coord: Coordinate<CameraFrd>,
     ) -> Option<Ray<SensorFrame>> {
-        let offset = self.angle_to(*zenith_coord)?;
+        let offset = self.angle_to(zenith_coord)?;
         let angle = self.angle.into_inner() - offset;
 
         Some(Ray::new(

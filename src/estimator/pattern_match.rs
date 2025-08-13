@@ -1,27 +1,31 @@
-use super::Estimator;
 use crate::{
-    camera::{Camera, Lens, RayleighModel, SkyPoint},
-    error::Error,
+    camera::{Camera, Lens},
+    estimator::Estimator,
     iter::RayIterator,
-    light::ray::{Ray, RayLocation, SensorFrame},
-    state::Orientation,
-};
-use rand::{
-    distr::{Distribution, Uniform},
-    Rng,
+    light::{
+        dop::Dop,
+        ray::{Ray, SensorFrame},
+    },
+    model::SkyModel,
+    CameraEnu,
 };
 use rayon::prelude::*;
+use sguaba::{engineering::Orientation, Bearing};
+use uom::{
+    si::{angle::radian, f64::Angle},
+    ConstZero,
+};
 
 /// Estimates ort using simulated images and a loss function.
 pub struct PatternMatch<S> {
     lens: Lens,
-    model: RayleighModel,
+    model: SkyModel,
     searcher: S,
     max_iters: usize,
 }
 
 impl<S> PatternMatch<S> {
-    pub fn new(lens: Lens, model: RayleighModel, searcher: S, max_iters: usize) -> Self {
+    pub fn new(lens: Lens, model: SkyModel, searcher: S, max_iters: usize) -> Self {
         Self {
             lens,
             model,
@@ -32,41 +36,74 @@ impl<S> PatternMatch<S> {
 }
 
 impl<S: Searcher> Estimator<SensorFrame> for PatternMatch<S> {
-    type Output = Orientation;
+    type Output = Orientation<CameraEnu>;
 
     fn estimate<I: RayIterator<SensorFrame>>(self, rays: I) -> Self::Output {
         let rays: Vec<Ray<SensorFrame>> = rays.collect();
+
         self.searcher
-            .search_iter()
+            .orientations()
             .take(self.max_iters)
             .map(|ort| {
-                let camera = Camera::new(self.lens.clone(), ort.clone());
-                let zen_loc = RayLocation::new(camera.trace_from_sky(&SkyPoint::new(0.0, 0.0)));
+                // Construct a camera at the new orientation.
+                let cam = Camera::new(self.lens.clone(), ort.clone());
+
+                // Find the zenith coordinate in CameraFrd.
+                let zenith_coord = cam
+                    .trace_from_sky(
+                        Bearing::<CameraEnu>::builder()
+                            .azimuth(Angle::ZERO)
+                            .elevation(Angle::HALF_TURN / 2.)
+                            .expect("elevation is on range -90 to 90")
+                            .build(),
+                    )
+                    .expect("zenith is always above the horizon");
+
                 let loss = rays
                     .par_iter()
-                    .map(|ray| {
-                        (*ray.aop()
-                            - *camera
-                                .simulate_ray(ray.loc().clone(), &self.model)
-                                .into_sensor_frame(&zen_loc)
-                                .aop())
-                        .into_inner()
-                        .powf(2.)
-                            / (*ray.dop()).into_inner()
+                    .filter_map(|ray| {
+                        // Model a ray with the same CameraFrd coordinate as the
+                        // measured ray.
+                        let ray_bearing = cam
+                            .trace_from_sensor(*ray.coord())
+                            .expect("ray coordinate should always have Z of zero");
+                        // Ignore rays from below the horizon.
+                        let modelled_aop = self.model.aop(ray_bearing)?;
+                        let modelled_ray_global = Ray::new(*ray.coord(), modelled_aop, Dop::zero());
+
+                        // Transform the modelled ray from the global frame into
+                        // the sensor frame.
+                        let modelled_ray_sensor = modelled_ray_global
+                            .into_sensor_frame(zenith_coord.clone())
+                            // Camera trace_from_sky always returns a coordinate
+                            // with a zenith of zero which enforces this expect.
+                            .expect("zenith coord is has Z of zero");
+
+                        // Compute the weighted, squared difference between the
+                        // modelled ray and the measured ray.
+                        let delta = *ray.aop() - *modelled_ray_sensor.aop();
+                        let sq_diff = delta.into_inner().get::<radian>().powf(2.);
+                        let weight = 1. / (*ray.dop()).into_inner();
+                        let weighted_sq_diff = weight * sq_diff;
+
+                        Some(weighted_sq_diff)
                     })
+                    // Take the mean of the weighted, squared differences.
                     .sum::<f64>()
                     / rays.len() as f64;
 
                 Estimate { ort, loss }
             })
+            // Find the estimate with the smallest weighted, squared difference.
             .reduce(Estimate::min)
-            .unwrap()
+            .expect("at least one orientation from searcher")
+            // Return the orientation of the camera used to generate the model.
             .ort
     }
 }
 
 struct Estimate {
-    ort: Orientation,
+    ort: Orientation<CameraEnu>,
     loss: f64,
 }
 
@@ -79,35 +116,29 @@ impl Estimate {
     }
 }
 
-/// Can be converted to an iterator over orts.
+/// Can be converted to an iterator over orientations.
 ///
 /// Used by `PatternMatcher` to generate simulated images.
 pub trait Searcher {
-    type Iter: Iterator<Item = Orientation>;
-    fn search_iter(self) -> Self::Iter;
+    type Iter: Iterator<Item = Orientation<CameraEnu>>;
+
+    fn orientations(self) -> Self::Iter;
 }
 
-/// A searcher implementation that provides random orts within a bounded range.
-pub struct StochasticSearch<R> {
-    sampler: Uniform<Orientation>,
-    rng: R,
+pub struct VecSearch {
+    orts: Vec<Orientation<CameraEnu>>,
 }
 
-impl<R> StochasticSearch<R> {
-    /// Creates a new `StochasticSearch` bounded by `low` and `high`.
-    pub fn try_new(low: Orientation, high: Orientation, rng: R) -> Result<Self, Error> {
-        let sampler = Uniform::new(low, high).map_err(|err| match err {
-            rand::distr::uniform::Error::EmptyRange => Error::EmptyRange,
-            rand::distr::uniform::Error::NonFinite => Error::NonFinite,
-        })?;
-        Ok(Self { sampler, rng })
+impl VecSearch {
+    pub fn new(orts: Vec<Orientation<CameraEnu>>) -> Self {
+        Self { orts }
     }
 }
 
-impl<R: Rng + Clone> Searcher for StochasticSearch<R> {
-    type Iter = rand::distr::Iter<Uniform<Orientation>, R, Orientation>;
+impl Searcher for VecSearch {
+    type Iter = std::vec::IntoIter<Orientation<CameraEnu>>;
 
-    fn search_iter(self) -> Self::Iter {
-        self.sampler.sample_iter(self.rng)
+    fn orientations(self) -> Self::Iter {
+        self.orts.into_iter()
     }
 }

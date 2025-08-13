@@ -6,9 +6,12 @@ use chrono::prelude::*;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use sguaba::{systems::Wgs84, Bearing};
-use uom::si::{
-    angle::{degree, radian},
-    f64::Angle,
+use uom::{
+    si::{
+        angle::{degree, radian},
+        f64::Angle,
+    },
+    ConstZero,
 };
 
 /// Describes the skylight polarization pattern for a given earth centered
@@ -39,17 +42,24 @@ impl SkyModel {
 
         Self::from_solar_bearing(
             Bearing::<CameraEnu>::builder()
-                .azimuth(Angle::new::<radian>(solar_pos.azimuth))
+                .azimuth(Angle::new::<degree>(solar_pos.azimuth))
                 // Convert the zenith angle into an elevation angle.
                 // The elevation is taken from the XY plane towards positive Z.
-                .elevation(Angle::HALF_TURN / 2. - Angle::new::<radian>(solar_pos.zenith_angle))
+                .elevation(Angle::HALF_TURN / 2. - Angle::new::<degree>(solar_pos.zenith_angle))
                 .expect("solar zenith should be on the range 0 to 180")
                 .build(),
         )
     }
 
     /// Use the `SkyModel` to compute an `Aop` in the `GlobalFrame` at `bearing`.
-    pub fn aop(&self, bearing: Bearing<CameraEnu>) -> Aop<GlobalFrame> {
+    ///
+    /// Returns `None` if `bearing` is below the horizon ie it has elevation
+    /// less than zero.
+    pub fn aop(&self, bearing: Bearing<CameraEnu>) -> Option<Aop<GlobalFrame>> {
+        if bearing.elevation() < Angle::ZERO {
+            return None;
+        }
+
         let solar_azimuth = self.solar_bearing.azimuth();
         let solar_zenith = Angle::HALF_TURN / 2. - self.solar_bearing.elevation();
         let azimuth = bearing.azimuth();
@@ -58,7 +68,7 @@ impl SkyModel {
             - zenith.cos() * (azimuth - solar_azimuth).cos() * solar_zenith.sin())
         .atan2((azimuth - solar_azimuth).sin() * solar_zenith.sin());
 
-        Aop::from_angle(angle).expect("model to return an angle in the correct range")
+        Some(Aop::from_angle_wrapped(angle))
     }
 }
 
@@ -66,37 +76,38 @@ impl SkyModel {
 mod tests {
     use super::*;
     use approx::relative_eq;
-    use rstest::rstest;
+    use quickcheck::quickcheck;
     use uom::si::angle::degree;
 
-    #[rstest]
-    #[case(false, Angle::new::<degree>(0.1))]
-    #[case(true, Angle::new::<degree>(0.1))]
-    fn solar_meridian_ortho_aop(#[case] flip_azimuth: bool, #[case] elevation: Angle) {
-        let azimuth = match flip_azimuth {
-            true => Angle::new::<degree>(180.0),
-            false => Angle::new::<degree>(0.0),
-        };
+    quickcheck! {
+        fn solar_meridian_ortho_aop(flip_azimuth: bool, elevation_seed: u8) -> bool {
+            let elevation = Angle::new::<degree>(elevation_seed as f64 * 90. / u8::MAX as f64);
+            let azimuth = match flip_azimuth {
+                true => Angle::new::<degree>(180.0),
+                false => Angle::new::<degree>(0.0),
+            };
 
-        assert!(relative_eq!(
-            SkyModel::from_solar_bearing(
-                Bearing::<CameraEnu>::builder()
-                    .azimuth(Angle::new::<degree>(0.0))
-                    .elevation(Angle::new::<degree>(45.0))
-                    .expect("solar elevation should be on the range -90 to 90")
-                    .build(),
+            relative_eq!(
+                SkyModel::from_solar_bearing(
+                    Bearing::<CameraEnu>::builder()
+                        .azimuth(Angle::new::<degree>(0.0))
+                        .elevation(Angle::new::<degree>(45.0))
+                        .expect("solar elevation should be on the range -90 to 90")
+                        .build(),
+                )
+                .aop(
+                    Bearing::<CameraEnu>::builder()
+                        .azimuth(azimuth)
+                        .elevation(elevation)
+                        .expect("elevation should be on the range -90 to 90")
+                        .build(),
+                )
+                .expect("bearing is above the horizon")
+                .into_inner()
+                .get::<degree>()
+                .abs(),
+                90.0
             )
-            .aop(
-                Bearing::<CameraEnu>::builder()
-                    .azimuth(azimuth)
-                    .elevation(elevation)
-                    .expect("elevation should be on the range -90 to 90")
-                    .build(),
-            )
-            .into_inner()
-            .get::<degree>()
-            .abs(),
-            90.0
-        ));
+        }
     }
 }

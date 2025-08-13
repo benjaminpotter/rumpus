@@ -95,19 +95,3 @@ impl UniformSampler for UniformOrientation {
 impl SampleUniform for Orientation {
     type Sampler = UniformOrientation;
 }
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct Position {
-    pub lat: f64,
-    pub lon: f64,
-}
-
-impl Position {
-    pub fn kingston() -> Self {
-        Self {
-            lat: 44.2187,
-            lon: -76.4747,
-        }
-    }
-}

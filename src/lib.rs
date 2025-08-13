@@ -14,8 +14,7 @@ pub mod state;
 pub mod prelude {
     pub use crate::camera::{Camera, Lens};
     pub use crate::error::Error;
-    pub use crate::model::SkyModel;
-    // pub use crate::estimator::pattern_match::{PatternMatch, StochasticSearch};
+    pub use crate::estimator::pattern_match::{PatternMatch, VecSearch};
     pub use crate::image::IntensityImage;
     pub use crate::iter::RayIterator;
     pub use crate::light::{
@@ -23,7 +22,7 @@ pub mod prelude {
         dop::Dop,
         ray::{GlobalFrame, Ray, RaySensor, SensorFrame},
     };
-    pub use crate::state::{Orientation, Position};
+    pub use crate::model::SkyModel;
     pub use crate::{CameraEnu, CameraFrd};
 }
 

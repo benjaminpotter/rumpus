@@ -75,6 +75,6 @@ where
 {
     type Item = Ray<Frame>;
     fn next(&mut self) -> Option<Self::Item> {
-        self.iter.find(|ray| self.pred.eval(&ray))
+        self.iter.find(|ray| self.pred.eval(ray))
     }
 }
