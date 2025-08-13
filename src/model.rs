@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use sguaba::{systems::Wgs84, Bearing};
 use uom::{
     si::{
-        angle::{degree, radian},
+        angle::degree,
         f64::Angle,
     },
     ConstZero,

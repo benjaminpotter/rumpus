@@ -93,10 +93,10 @@ impl IntensityImage {
         let metapixels: Vec<IntensityPixel> = coords
             .into_par_iter()
             .map(|(x, y)| {
-                let i000 = ((x as usize * 2 + 1) + (y as usize * 2 + 1) * width as usize);
-                let i045 = ((x as usize * 2) + (y as usize * 2 + 1) * width as usize);
-                let i090 = ((x as usize * 2) + (y as usize * 2) * width as usize);
-                let i135 = ((x as usize * 2 + 1) + (y as usize * 2) * width as usize);
+                let i000 = (x as usize * 2 + 1) + (y as usize * 2 + 1) * width as usize;
+                let i045 = (x as usize * 2) + (y as usize * 2 + 1) * width as usize;
+                let i090 = (x as usize * 2) + (y as usize * 2) * width as usize;
+                let i135 = (x as usize * 2 + 1) + (y as usize * 2) * width as usize;
 
                 // FIXME: Catch problems with the size of `bytes`.
                 IntensityPixel {
