@@ -20,6 +20,6 @@ serde = ["dep:serde", "nalgebra/serde-serialize" ]
 rand_chacha = "0.9.0"
 image = { version="0.25.6", features=["rayon"] }
 quickcheck = "1.0.3"
-approx = "0.5.1"
 rstest = "0.26.1"
+approx = "0.5.1"
 

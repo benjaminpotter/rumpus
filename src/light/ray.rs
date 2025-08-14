@@ -97,11 +97,9 @@ impl Ray<GlobalFrame> {
         zenith_coord: Coordinate<CameraFrd>,
     ) -> Option<Ray<SensorFrame>> {
         let offset = self.angle_to(zenith_coord)?;
-        let angle = self.angle.into_inner() + offset;
-
         Some(Ray::new(
             self.coord,
-            Aop::from_angle_wrapped(angle),
+            self.angle.into_sensor_frame(offset),
             self.degree,
         ))
     }
@@ -117,13 +115,11 @@ impl Ray<SensorFrame> {
     pub fn into_global_frame(
         self,
         zenith_coord: Coordinate<CameraFrd>,
-    ) -> Option<Ray<SensorFrame>> {
+    ) -> Option<Ray<GlobalFrame>> {
         let offset = self.angle_to(zenith_coord)?;
-        let angle = self.angle.into_inner() - offset;
-
         Some(Ray::new(
             self.coord,
-            Aop::from_angle_wrapped(angle),
+            self.angle.into_global_frame(offset),
             self.degree,
         ))
     }

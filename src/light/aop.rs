@@ -1,13 +1,12 @@
-use super::ray::RayFrame;
-use uom::si::f64::Angle;
-
+use crate::light::ray::{GlobalFrame, RayFrame, SensorFrame};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+use uom::si::f64::Angle;
 
 /// Describes the e-vector orientation of a ray.
 ///
 /// The angle of the e-vector must be between -90.0 and 90.0.
-#[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, PartialOrd)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Aop<Frame: RayFrame> {
     /// The angle of the e-vector of the ray.
@@ -60,6 +59,20 @@ fn is_valid(angle: Angle) -> bool {
     -Angle::HALF_TURN / 2. <= angle && angle <= Angle::HALF_TURN / 2.
 }
 
+impl Aop<GlobalFrame> {
+    /// Transforms the `Aop` from the GlobalFrame into the SensorFrame.
+    pub fn into_sensor_frame(self, shift: Angle) -> Aop<SensorFrame> {
+        Aop::from_angle_wrapped(self.angle + shift)
+    }
+}
+
+impl Aop<SensorFrame> {
+    /// Transforms the `Aop` from the SensorFrame into the GlobalFrame.
+    pub fn into_global_frame(self, shift: Angle) -> Aop<GlobalFrame> {
+        Aop::from_angle_wrapped(self.angle - shift)
+    }
+}
+
 impl<Frame: RayFrame> std::ops::Add for Aop<Frame> {
     type Output = Self;
 
@@ -76,11 +89,23 @@ impl<Frame: RayFrame> std::ops::Sub for Aop<Frame> {
     }
 }
 
+impl<Frame: RayFrame> std::cmp::PartialEq for Aop<Frame> {
+    fn eq(&self, other: &Aop<Frame>) -> bool {
+        match self.angle.abs() == Angle::HALF_TURN / 2.
+            && other.angle.abs() == Angle::HALF_TURN / 2.
+        {
+            // Handle the case that -90 is the same as 90.
+            true => true,
+            false => self.angle == other.angle,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::light::ray::GlobalFrame;
-    use approx::relative_eq;
+    use approx::assert_relative_eq;
     use quickcheck::quickcheck;
     use rstest::rstest;
     use uom::si::angle::{degree, radian};
@@ -111,10 +136,7 @@ mod tests {
     #[case(a(90.0), a(-89.0), a(1.0))]
     fn add_aop(#[case] lhs: Angle, #[case] rhs: Angle, #[case] sum: Angle) {
         let result = Aop::<GlobalFrame>::from_angle(lhs).unwrap() + Aop::from_angle(rhs).unwrap();
-        assert!(relative_eq!(
-            result.into_inner().get::<radian>(),
-            sum.get::<radian>(),
-        ));
+        assert_relative_eq!(result.into_inner().get::<radian>(), sum.get::<radian>(),);
     }
 
     #[rstest]
@@ -123,10 +145,7 @@ mod tests {
     #[case(a(-90.0), a(-90.0), a(0.0))]
     fn sub_aop(#[case] lhs: Angle, #[case] rhs: Angle, #[case] dif: Angle) {
         let result = Aop::<GlobalFrame>::from_angle(lhs).unwrap() - Aop::from_angle(rhs).unwrap();
-        assert!(relative_eq!(
-            result.into_inner().get::<radian>(),
-            dif.get::<radian>()
-        ));
+        assert_relative_eq!(result.into_inner().get::<radian>(), dif.get::<radian>());
     }
 
     #[rstest]
@@ -147,6 +166,22 @@ mod tests {
                 .unwrap()
                 .in_thres(&Aop::<GlobalFrame>::from_angle(case).unwrap(), thres,),
             in_thres
+        );
+    }
+
+    #[rstest]
+    #[case(a(0.0), a(0.0))]
+    #[case(a(0.0), a(90.0))]
+    #[case(a(1.0), a(90.0))]
+    #[case(a(-1.0), a(180.0))]
+    fn frame_reversible(#[case] angle: Angle, #[case] offset: Angle) {
+        assert_relative_eq!(
+            Aop::<SensorFrame>::from_angle_wrapped(angle)
+                .into_global_frame(offset.clone())
+                .into_sensor_frame(offset)
+                .into_inner()
+                .get::<radian>(),
+            angle.get::<radian>(),
         );
     }
 }
