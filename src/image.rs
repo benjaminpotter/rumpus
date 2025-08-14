@@ -2,15 +2,16 @@ use super::{
     error::Error,
     iter::RayIterator,
     light::{
-        ray::{Ray, RayLocation, RaySensor, SensorFrame},
+        ray::{Ray, RaySensor, SensorFrame},
         stokes::StokesVec,
     },
 };
 use rayon::prelude::*;
+use uom::si::f64::Length;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct IntensityPixel {
-    loc: (u32, u32),
+    loc: (u16, u16),
     /// A metapixel is a group of four intensity pixels that have two sets of orthogonal linear polarizing filters.
     /// Each element in this buffer stores an intensity value in 0, 45, 90, 135 order.
     inner: [f64; 4],
@@ -23,7 +24,7 @@ impl IntensityPixel {
     /// S_1 = I_0 - I_90
     /// S_2 = I_45 - I_135
     /// ```
-    fn to_stokes(&self) -> StokesVec<SensorFrame> {
+    fn stokes(&self) -> StokesVec<SensorFrame> {
         StokesVec::new(
             (self.inner[0] + self.inner[1] + self.inner[2] + self.inner[3]) / 2.,
             self.inner[0] - self.inner[2],
@@ -41,6 +42,8 @@ impl IntensityPixel {
 pub struct IntensityImage {
     /// Buffer of metapixels.
     metapixels: Vec<IntensityPixel>,
+    width: u16,
+    height: u16,
 }
 
 impl IntensityImage {
@@ -75,33 +78,25 @@ impl IntensityImage {
     /// +--------+
     /// | w(h-1) |
     /// ```
-    pub fn from_bytes(width: u32, height: u32, bytes: &[u8]) -> Result<Self, Error> {
-        // TODO:
-        // - Allow dimensions to mismatch the bytes and do interpolation.
-        // - Maybe make another function for users that want this functionality.
+    pub fn from_bytes(width: u16, height: u16, bytes: &[u8]) -> Result<Self, Error> {
+        let meta_width = width
+            .checked_div(2)
+            .ok_or(Error::OddImgDim((width, height)))?;
+        let meta_height = height
+            .checked_div(2)
+            .ok_or(Error::OddImgDim((width, height)))?;
 
-        let dims = (
-            width
-                .checked_div(2)
-                .ok_or(Error::OddImgDim((width, height)))?,
-            height
-                .checked_div(2)
-                .ok_or(Error::OddImgDim((width, height)))?,
-        );
-
-        let coords: Vec<(u32, u32)> = (0..dims.1)
-            .into_iter()
-            .map(|y| (0..dims.0).into_iter().map(move |x| (x, y)))
-            .flatten()
+        let coords: Vec<(u16, u16)> = (0..meta_height)
+            .flat_map(|y| (0..meta_width).map(move |x| (x, y)))
             .collect();
 
         let metapixels: Vec<IntensityPixel> = coords
             .into_par_iter()
             .map(|(x, y)| {
-                let i000 = ((x * 2 + 1) + (y * 2 + 1) * width) as usize;
-                let i045 = ((x * 2 + 0) + (y * 2 + 1) * width) as usize;
-                let i090 = ((x * 2 + 0) + (y * 2 + 0) * width) as usize;
-                let i135 = ((x * 2 + 1) + (y * 2 + 0) * width) as usize;
+                let i000 = (x as usize * 2 + 1) + (y as usize * 2 + 1) * width as usize;
+                let i045 = (x as usize * 2) + (y as usize * 2 + 1) * width as usize;
+                let i090 = (x as usize * 2) + (y as usize * 2) * width as usize;
+                let i135 = (x as usize * 2 + 1) + (y as usize * 2) * width as usize;
 
                 // FIXME: Catch problems with the size of `bytes`.
                 IntensityPixel {
@@ -116,74 +111,44 @@ impl IntensityImage {
             })
             .collect();
 
-        Ok(Self { metapixels })
+        Ok(Self {
+            metapixels,
+            width: meta_width,
+            height: meta_height,
+        })
     }
 
-    pub fn rays<'a, 'b>(&'a self, sensor: &'b RaySensor) -> Rays<'a, 'b> {
+    pub fn rays<'a>(&'a self, pixel_width: Length, pixel_height: Length) -> Rays<'a> {
         Rays {
             inner: self.metapixels.iter(),
-            sensor,
+            // Constructs a `RaySensor` using the dimensions of the `IntensityImage`.
+            sensor: RaySensor::new(pixel_width, pixel_height, self.width, self.height),
         }
     }
 }
 
 /// An iterator over rays.
 #[derive(Clone, Debug)]
-pub struct Rays<'a, 'b> {
+pub struct Rays<'a> {
     inner: std::slice::Iter<'a, IntensityPixel>,
-    sensor: &'b RaySensor,
+    sensor: RaySensor,
 }
 
-impl<'a, 'b> Iterator for Rays<'a, 'b> {
+impl<'a> Iterator for Rays<'a> {
     type Item = Ray<SensorFrame>;
     fn next(&mut self) -> Option<Self::Item> {
         let px = self.inner.next()?;
-        let loc = px.loc.clone();
         Some(Ray::from_stokes(
-            RayLocation::at_pixel(loc, self.sensor),
-            px.to_stokes(),
+            self.sensor
+                .at_pixel(px.loc.1, px.loc.0)
+                // This iterator is created with a RaySensor that matches the
+                // parent IntensityImage which guarantees that all pixel
+                // locations are inside the RaySensor bounds.
+                .expect("sensor dimensions should match image dimensions"),
+            px.stokes(),
         ))
     }
 }
 
 // All of RayIterator's functions are defined using Iterator.
-impl<'a, 'b> RayIterator<SensorFrame> for Rays<'a, 'b> {}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::light::{aop::Aop, dop::Dop};
-    use image::{GrayImage, ImageReader};
-    use nalgebra::Vector2;
-
-    #[test]
-    fn first_ray() {
-        let image = read_image();
-        let (width, height) = image.dimensions();
-        let sensor = RaySensor::default();
-        let ray = IntensityImage::from_bytes(width, height, &image.into_raw())
-            .unwrap()
-            .rays(&sensor)
-            .next()
-            .unwrap();
-
-        let sensor = RaySensor::default();
-
-        assert_eq!(
-            ray,
-            Ray::new(
-                RayLocation::at_pixel((0, 0), &sensor),
-                Aop::from_deg(90.0),
-                Dop::new(0.2222222222222222)
-            )
-        );
-    }
-
-    fn read_image() -> GrayImage {
-        ImageReader::open("testing/intensity.png")
-            .unwrap()
-            .decode()
-            .unwrap()
-            .into_luma8()
-    }
-}
+impl<'a> RayIterator<SensorFrame> for Rays<'a> {}

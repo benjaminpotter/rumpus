@@ -10,6 +10,8 @@ rand = "0.9"
 chrono = { version="0.4.41", features=["serde"] }
 spa = "0.5.1"
 serde = { version="1.0", features=["derive"], optional=true }
+sguaba = "0.9.4"
+uom = "0.37.0"
 
 [features]
 serde = ["dep:serde", "nalgebra/serde-serialize" ]
@@ -17,5 +19,7 @@ serde = ["dep:serde", "nalgebra/serde-serialize" ]
 [dev-dependencies]
 rand_chacha = "0.9.0"
 image = { version="0.25.6", features=["rayon"] }
-clap = { version="4.5", features=["derive"] }
+quickcheck = "1.0.3"
+rstest = "0.26.1"
+approx = "0.5.1"
 

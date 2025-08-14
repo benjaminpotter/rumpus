@@ -1,4 +1,5 @@
 use super::{aop::Aop, dop::Dop, ray::RayFrame};
+use uom::si::{angle::radian, f64::Angle};
 
 /// Describes the linear polarization of a ray.
 #[derive(Debug, PartialEq)]
@@ -17,16 +18,12 @@ impl<Frame: RayFrame> StokesVec<Frame> {
 
     /// Compute the AoP of the ray.
     pub fn aop(&self) -> Aop<Frame> {
-        Aop::from_rad(self.inner[2].atan2(self.inner[1]) / 2.)
+        let angle = Angle::new::<radian>(self.inner[2].atan2(self.inner[1]) / 2.);
+        Aop::from_angle(angle).expect("aop from stokes equations should return a valid angle")
     }
 
     /// Compute the DoP of the ray.
     pub fn dop(&self) -> Dop {
         Dop::new((self.inner[1].powf(2.) + self.inner[2].powf(2.)).sqrt() / self.inner[0])
     }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
 }

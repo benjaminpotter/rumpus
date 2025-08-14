@@ -13,15 +13,20 @@ impl Dop {
     ///
     /// Panics if `degree` is not between 0.0 and 1.0.
     pub fn new(degree: f64) -> Self {
-        assert!(0.0 <= degree && degree <= 1.0);
+        assert!((0.0..=1.0).contains(&degree));
         Self { degree }
+    }
+
+    /// Create a new `Dop` of zero.
+    pub fn zero() -> Self {
+        Self { degree: 0. }
     }
 
     /// Returns a new `Dop` clamp between 0.0 and `max`.
     ///
     /// Panics if `max` is not between 0.0 and 1.0.
     pub fn clamp(self, max: f64) -> Self {
-        assert!(0.0 <= max && max <= 1.0);
+        assert!((0.0..=1.0).contains(&max));
         Self {
             degree: self.degree.clamp(0.0, max),
         }
@@ -35,6 +40,12 @@ impl Dop {
 impl From<f64> for Dop {
     fn from(degree: f64) -> Self {
         Self { degree }
+    }
+}
+
+impl Default for Dop {
+    fn default() -> Self {
+        Self::zero()
     }
 }
 

@@ -3,6 +3,7 @@ use super::{
     dop::Dop,
     ray::{Ray, RayFrame},
 };
+use uom::si::f64::Angle;
 
 /// A predicate over a ray.
 ///
@@ -17,11 +18,11 @@ pub trait RayPredicate<Frame: RayFrame> {
 /// `center - thres <= Aop <= center + thres` and handles wrapping.
 pub struct AopFilter<Frame: RayFrame> {
     center: Aop<Frame>,
-    thres: f64,
+    thres: Angle,
 }
 
 impl<Frame: RayFrame> AopFilter<Frame> {
-    pub fn new(center: Aop<Frame>, thres: f64) -> Self {
+    pub fn new(center: Aop<Frame>, thres: Angle) -> Self {
         Self { center, thres }
     }
 }
@@ -74,11 +75,6 @@ where
 {
     type Item = Ray<Frame>;
     fn next(&mut self) -> Option<Self::Item> {
-        self.iter.find(|ray| self.pred.eval(&ray))
+        self.iter.find(|ray| self.pred.eval(ray))
     }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
 }
