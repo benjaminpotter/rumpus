@@ -19,6 +19,7 @@ pub mod prelude {
     pub use crate::light::{
         aop::Aop,
         dop::Dop,
+        filter::{AopFilter, DopFilter, RayFilter},
         ray::{GlobalFrame, Ray, RaySensor, SensorFrame},
     };
     pub use crate::model::SkyModel;

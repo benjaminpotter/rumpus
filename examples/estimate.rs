@@ -30,6 +30,7 @@ fn main() {
             .roll(Angle::new::<degree>(0.0))
             .build(),
     ];
+    let min_dop = 0.5;
     let max_iterations = 10;
 
     let raw_image = ImageReader::open(&image_path)
@@ -42,6 +43,7 @@ fn main() {
     let estimate = IntensityImage::from_bytes(width as u16, height as u16, &raw_image.into_raw())
         .expect("image dimensions are even")
         .rays(pixel_size, pixel_size)
+        .ray_filter(DopFilter::new(min_dop))
         .estimate(PatternMatch::new(
             Lens::from_focal_length(focal_length).expect("focal length is greater than zero"),
             SkyModel::from_wgs84_and_time(

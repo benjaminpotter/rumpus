@@ -1,7 +1,10 @@
-use super::{
-    aop::Aop,
-    dop::Dop,
-    ray::{Ray, RayFrame},
+use crate::{
+    iter::RayIterator,
+    light::{
+        aop::Aop,
+        dop::Dop,
+        ray::{Ray, RayFrame},
+    },
 };
 use uom::si::f64::Angle;
 
@@ -77,4 +80,12 @@ where
     fn next(&mut self) -> Option<Self::Item> {
         self.iter.find(|ray| self.pred.eval(ray))
     }
+}
+
+// All of RayIterator's functions are defined using Iterator.
+impl<I, P, Frame: RayFrame> RayIterator<Frame> for RayFilter<I, P>
+where
+    I: Iterator<Item = Ray<Frame>>,
+    P: RayPredicate<Frame>,
+{
 }
