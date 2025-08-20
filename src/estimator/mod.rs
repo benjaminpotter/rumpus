@@ -1,4 +1,4 @@
-use super::{iter::RayIterator, light::ray::RayFrame};
+use crate::{iter::RayIterator, ray::RayFrame};
 
 // pub mod hough_transform;
 pub mod pattern_match;

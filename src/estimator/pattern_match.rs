@@ -2,11 +2,9 @@ use crate::{
     camera::{Camera, Lens},
     estimator::Estimator,
     iter::RayIterator,
-    light::{
-        dop::Dop,
-        ray::{Ray, SensorFrame},
-    },
+    light::dop::Dop,
     model::SkyModel,
+    ray::{Ray, SensorFrame},
     CameraEnu,
 };
 use rayon::prelude::*;

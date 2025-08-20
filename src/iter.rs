@@ -1,9 +1,7 @@
 use super::{
     estimator::Estimator,
-    light::{
-        filter::{RayFilter, RayPredicate},
-        ray::{Ray, RayFrame},
-    },
+    light::filter::{RayFilter, RayPredicate},
+    ray::{Ray, RayFrame},
 };
 
 /// A `Iterator` wrapper for `Ray`.

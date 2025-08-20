@@ -1,5 +1,7 @@
-use super::{aop::Aop, dop::Dop, stokes::StokesVec};
-use crate::CameraFrd;
+use crate::{
+    light::{aop::Aop, dop::Dop, stokes::StokesVec},
+    CameraFrd,
+};
 use sguaba::Coordinate;
 use uom::{
     si::f64::{Angle, Length},

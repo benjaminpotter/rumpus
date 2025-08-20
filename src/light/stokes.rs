@@ -1,4 +1,7 @@
-use super::{aop::Aop, dop::Dop, ray::RayFrame};
+use crate::{
+    light::{aop::Aop, dop::Dop},
+    ray::RayFrame,
+};
 use uom::si::{angle::radian, f64::Angle};
 
 /// Describes the linear polarization of a ray.

@@ -1,10 +1,7 @@
 use crate::{
     iter::RayIterator,
-    light::{
-        aop::Aop,
-        dop::Dop,
-        ray::{Ray, RayFrame},
-    },
+    light::{aop::Aop, dop::Dop},
+    ray::{Ray, RayFrame},
 };
 use uom::si::f64::Angle;
 

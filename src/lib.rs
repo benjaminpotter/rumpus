@@ -9,6 +9,7 @@ pub mod image;
 pub mod iter;
 pub mod light;
 pub mod model;
+pub mod ray;
 
 pub mod prelude {
     pub use crate::camera::{Camera, Lens};
@@ -20,9 +21,9 @@ pub mod prelude {
         aop::Aop,
         dop::Dop,
         filter::{AopFilter, DopFilter, RayFilter},
-        ray::{GlobalFrame, Ray, RaySensor, SensorFrame},
     };
     pub use crate::model::SkyModel;
+    pub use crate::ray::{GlobalFrame, Ray, RaySensor, SensorFrame};
     pub use crate::{CameraEnu, CameraFrd};
 }
 

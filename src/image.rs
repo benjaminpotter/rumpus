@@ -1,10 +1,8 @@
 use super::{
     error::Error,
     iter::RayIterator,
-    light::{
-        ray::{Ray, RaySensor, SensorFrame},
-        stokes::StokesVec,
-    },
+    light::stokes::StokesVec,
+    ray::{Ray, RaySensor, SensorFrame},
 };
 use rayon::prelude::*;
 use uom::si::f64::Length;

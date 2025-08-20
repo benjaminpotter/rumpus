@@ -1,4 +1,4 @@
-use crate::light::ray::{GlobalFrame, RayFrame, SensorFrame};
+use crate::ray::{GlobalFrame, RayFrame, SensorFrame};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use uom::si::f64::Angle;
@@ -104,7 +104,7 @@ impl<Frame: RayFrame> std::cmp::PartialEq for Aop<Frame> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::light::ray::GlobalFrame;
+    use crate::ray::GlobalFrame;
     use approx::assert_relative_eq;
     use quickcheck::quickcheck;
     use rstest::rstest;
