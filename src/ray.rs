@@ -2,16 +2,15 @@ use crate::{
     light::{aop::Aop, dop::Dop, stokes::StokesVec},
     CameraFrd,
 };
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
 use sguaba::Coordinate;
 use uom::{
     si::f64::{Angle, Length},
     ConstZero,
 };
 
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
-
-pub trait RayFrame: Copy + Clone {}
+pub trait RayFrame: Copy + Clone + std::fmt::Debug + PartialEq {}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -124,44 +123,5 @@ impl Ray<SensorFrame> {
             self.angle.into_global_frame(offset),
             self.degree,
         ))
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct RaySensor {
-    pixel_width: Length,
-    pixel_height: Length,
-    cols: u16,
-    rows: u16,
-}
-
-impl RaySensor {
-    pub fn new(pixel_width: Length, pixel_height: Length, cols: u16, rows: u16) -> Self {
-        Self {
-            pixel_width,
-            pixel_height,
-            cols,
-            rows,
-        }
-    }
-
-    /// Computes a `Coordinate` in `CameraFrd` from a pixel location.
-    ///
-    /// `row` maps to the FRD right direction.
-    /// `col` maps to the FRD front direction.
-    /// Returns `None` if the `row` and `col` are out of bounds.
-    pub fn at_pixel(&self, row: u16, col: u16) -> Option<Coordinate<CameraFrd>> {
-        if row > self.rows || col > self.cols {
-            return None;
-        }
-
-        Some(
-            Coordinate::<CameraFrd>::builder()
-                .frd_front(self.pixel_width * (col as f64 - self.cols as f64 / 2.0))
-                .frd_right(self.pixel_height * (row as f64 - self.rows as f64 / 2.0))
-                .frd_down(Length::ZERO)
-                .build(),
-        )
     }
 }

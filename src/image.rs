@@ -1,15 +1,18 @@
-use super::{
+use crate::{
     error::Error,
     iter::RayIterator,
     light::stokes::StokesVec,
-    ray::{Ray, RaySensor, SensorFrame},
+    ray::{Ray, RayFrame, SensorFrame},
+    CameraFrd,
 };
 use rayon::prelude::*;
-use uom::si::f64::Length;
+use sguaba::Coordinate;
+use uom::{si::f64::Length, si::ratio::ratio, ConstZero};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct IntensityPixel {
-    loc: (u16, u16),
+    row: u16,
+    col: u16,
     /// A metapixel is a group of four intensity pixels that have two sets of orthogonal linear polarizing filters.
     /// Each element in this buffer stores an intensity value in 0, 45, 90, 135 order.
     inner: [f64; 4],
@@ -98,7 +101,8 @@ impl IntensityImage {
 
                 // FIXME: Catch problems with the size of `bytes`.
                 IntensityPixel {
-                    loc: (x, y),
+                    row: y,
+                    col: x,
                     inner: [
                         bytes[i000] as f64,
                         bytes[i045] as f64,
@@ -116,11 +120,19 @@ impl IntensityImage {
         })
     }
 
+    pub fn width(&self) -> u16 {
+        self.width
+    }
+
+    pub fn height(&self) -> u16 {
+        self.height
+    }
+
     pub fn rays<'a>(&'a self, pixel_width: Length, pixel_height: Length) -> Rays<'a> {
         Rays {
             inner: self.metapixels.iter(),
-            // Constructs a `RaySensor` using the dimensions of the `IntensityImage`.
-            sensor: RaySensor::new(pixel_width, pixel_height, self.width, self.height),
+            // Constructs a `ImageSensor` using the dimensions of the `IntensityImage`.
+            sensor: ImageSensor::new(pixel_width, pixel_height, self.height, self.width),
         }
     }
 }
@@ -129,7 +141,7 @@ impl IntensityImage {
 #[derive(Clone, Debug)]
 pub struct Rays<'a> {
     inner: std::slice::Iter<'a, IntensityPixel>,
-    sensor: RaySensor,
+    sensor: ImageSensor,
 }
 
 impl<'a> Iterator for Rays<'a> {
@@ -138,10 +150,10 @@ impl<'a> Iterator for Rays<'a> {
         let px = self.inner.next()?;
         Some(Ray::from_stokes(
             self.sensor
-                .at_pixel(px.loc.1, px.loc.0)
-                // This iterator is created with a RaySensor that matches the
+                .at_pixel(px.row, px.col)
+                // This iterator is created with a ImageSensor that matches the
                 // parent IntensityImage which guarantees that all pixel
-                // locations are inside the RaySensor bounds.
+                // locations are inside the ImageSensor bounds.
                 .expect("sensor dimensions should match image dimensions"),
             px.stokes(),
         ))
@@ -150,3 +162,164 @@ impl<'a> Iterator for Rays<'a> {
 
 // All of RayIterator's functions are defined using Iterator.
 impl<'a> RayIterator<SensorFrame> for Rays<'a> {}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct ImageSensor {
+    pixel_width: Length,
+    pixel_height: Length,
+    rows: usize,
+    cols: usize,
+}
+
+impl ImageSensor {
+    pub fn new(pixel_width: Length, pixel_height: Length, rows: u16, cols: u16) -> Self {
+        Self {
+            pixel_width,
+            pixel_height,
+            rows: rows as usize,
+            cols: cols as usize,
+        }
+    }
+
+    pub fn pixel_count(&self) -> usize {
+        self.cols * self.rows
+    }
+
+    pub fn rows(&self) -> usize {
+        self.rows
+    }
+
+    pub fn cols(&self) -> usize {
+        self.cols
+    }
+
+    pub fn at_coord(&self, coord: Coordinate<CameraFrd>) -> Option<(u16, u16)> {
+        let row = ((coord.frd_right() / self.pixel_height).get::<ratio>()
+            + self.rows.checked_sub(1)? as f64 / 2.0)
+            .round() as usize;
+        let col = ((coord.frd_front() / self.pixel_width).get::<ratio>()
+            + self.cols.checked_sub(1)? as f64 / 2.0)
+            .round() as usize;
+
+        if (0..self.rows).contains(&row) && (0..self.cols).contains(&col) {
+            return Some((row as u16, col as u16));
+        }
+
+        None
+    }
+
+    /// Computes a `Coordinate` in `CameraFrd` from a pixel location.
+    ///
+    /// `row` maps to the FRD right direction.
+    /// `col` maps to the FRD front direction.
+    /// Returns `None` if the `row` and `col` are out of bounds.
+    pub fn at_pixel(&self, row: u16, col: u16) -> Option<Coordinate<CameraFrd>> {
+        if row as usize > self.rows || col as usize > self.cols {
+            return None;
+        }
+
+        Some(
+            Coordinate::<CameraFrd>::builder()
+                .frd_front(self.pixel_width * (col as f64 - (self.cols - 1) as f64 / 2.0))
+                .frd_right(self.pixel_height * (row as f64 - (self.rows - 1) as f64 / 2.0))
+                .frd_down(Length::ZERO)
+                .build(),
+        )
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct RayImage<Frame: RayFrame> {
+    pixels: Vec<Option<Ray<Frame>>>,
+    _phan: std::marker::PhantomData<Frame>,
+}
+
+impl<Frame: RayFrame> RayImage<Frame> {
+    pub fn new() -> Self {
+        Self {
+            pixels: Vec::new(),
+            _phan: std::marker::PhantomData,
+        }
+    }
+
+    pub fn from_pixels(pixels: Vec<Option<Ray<Frame>>>) -> Self {
+        Self {
+            pixels,
+            _phan: std::marker::PhantomData,
+        }
+    }
+
+    pub fn from_rays_with_sensor<I>(rays: I, sensor: &ImageSensor) -> Option<Self>
+    where
+        I: IntoIterator<Item = Ray<Frame>>,
+    {
+        let mut pixels = vec![None; sensor.pixel_count()];
+        for ray in rays {
+            if let Some((row, col)) = sensor.at_coord(*ray.coord()) {
+                let index = row as usize * sensor.cols() + col as usize;
+                if pixels[index].is_some() {
+                    return None;
+                }
+                pixels[index] = Some(ray);
+            } else {
+                return None;
+            }
+        }
+
+        Some(Self::from_pixels(pixels))
+    }
+
+    pub fn ray_pixels<'a>(&'a self) -> RayPixels<'a, Frame> {
+        RayPixels::new(self.pixels.iter())
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct RayPixels<'a, Frame: RayFrame> {
+    inner: std::slice::Iter<'a, Option<Ray<Frame>>>,
+}
+
+impl<'a, Frame: RayFrame> RayPixels<'a, Frame> {
+    fn new(inner: std::slice::Iter<'a, Option<Ray<Frame>>>) -> Self {
+        Self { inner }
+    }
+}
+
+impl<'a, Frame: RayFrame> Iterator for RayPixels<'a, Frame> {
+    type Item = &'a Option<Ray<Frame>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rstest::rstest;
+    use uom::si::length::micron;
+
+    #[rstest]
+    #[case(0, 0)]
+    #[case(512, 612)]
+    #[case(106, 0)]
+    #[case(0, 292)]
+    fn pixel_to_coord_roundtrip(#[case] row: u16, #[case] col: u16) {
+        const ROWS: u16 = 1024;
+        const COLS: u16 = 1224;
+        const PIXEL_SIZE_UM: f64 = 3.45 * 2.;
+
+        let sensor = ImageSensor::new(
+            Length::new::<micron>(PIXEL_SIZE_UM),
+            Length::new::<micron>(PIXEL_SIZE_UM),
+            ROWS,
+            COLS,
+        );
+
+        let coord = sensor.at_pixel(row, col).expect("pixel is on sensor");
+        let pixel = sensor.at_coord(coord).expect("coord is on sensor");
+
+        assert_eq!(pixel, (row, col));
+    }
+}

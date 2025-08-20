@@ -17,11 +17,11 @@ pub mod prelude {
     pub use crate::error::Error;
     pub use crate::estimator::pattern_match::{PatternMatch, VecSearch};
     pub use crate::filter::{AopFilter, DopFilter, RayFilter};
-    pub use crate::image::IntensityImage;
+    pub use crate::image::{ImageSensor, IntensityImage, RayImage};
     pub use crate::iter::RayIterator;
     pub use crate::light::{aop::Aop, dop::Dop};
     pub use crate::model::SkyModel;
-    pub use crate::ray::{GlobalFrame, Ray, RaySensor, SensorFrame};
+    pub use crate::ray::{GlobalFrame, Ray, SensorFrame};
     pub use crate::{CameraEnu, CameraFrd};
 }
 

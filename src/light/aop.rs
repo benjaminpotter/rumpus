@@ -49,6 +49,10 @@ impl<Frame: RayFrame> Aop<Frame> {
         (*self - *other).angle.abs() <= thres
     }
 
+    pub fn angle(&self) -> Angle {
+        self.angle
+    }
+
     pub fn into_inner(self) -> Angle {
         self.angle
     }

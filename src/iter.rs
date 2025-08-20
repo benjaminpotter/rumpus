@@ -1,6 +1,7 @@
 use super::{
     estimator::Estimator,
     filter::{RayFilter, RayPredicate},
+    image::{ImageSensor, RayImage},
     ray::{Ray, RayFrame},
 };
 
@@ -20,5 +21,12 @@ pub trait RayIterator<Frame: RayFrame>: Iterator<Item = Ray<Frame>> {
         E: Estimator<Frame, Output = O>,
     {
         estimator.estimate(self)
+    }
+
+    fn ray_image(self, sensor: &ImageSensor) -> Option<RayImage<Frame>>
+    where
+        Self: Sized,
+    {
+        RayImage::from_rays_with_sensor(self, sensor)
     }
 }
