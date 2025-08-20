@@ -5,6 +5,7 @@
 pub mod camera;
 pub mod error;
 pub mod estimator;
+pub mod filter;
 pub mod image;
 pub mod iter;
 pub mod light;
@@ -15,13 +16,10 @@ pub mod prelude {
     pub use crate::camera::{Camera, Lens};
     pub use crate::error::Error;
     pub use crate::estimator::pattern_match::{PatternMatch, VecSearch};
+    pub use crate::filter::{AopFilter, DopFilter, RayFilter};
     pub use crate::image::IntensityImage;
     pub use crate::iter::RayIterator;
-    pub use crate::light::{
-        aop::Aop,
-        dop::Dop,
-        filter::{AopFilter, DopFilter, RayFilter},
-    };
+    pub use crate::light::{aop::Aop, dop::Dop};
     pub use crate::model::SkyModel;
     pub use crate::ray::{GlobalFrame, Ray, RaySensor, SensorFrame};
     pub use crate::{CameraEnu, CameraFrd};

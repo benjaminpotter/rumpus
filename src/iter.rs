@@ -1,6 +1,6 @@
 use super::{
     estimator::Estimator,
-    light::filter::{RayFilter, RayPredicate},
+    filter::{RayFilter, RayPredicate},
     ray::{Ray, RayFrame},
 };
 
