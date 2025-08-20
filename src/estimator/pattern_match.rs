@@ -1,77 +1,107 @@
 use crate::{
-    camera::{Camera, CameraParams},
-    error::Error,
+    camera::{Camera, Lens},
     estimator::Estimator,
-    ray::{Ray, RayIterator},
-    state::{Pose, Position, State},
-};
-use chrono::prelude::*;
-use rand::{
-    distr::{Distribution, Uniform},
-    Rng,
+    iter::RayIterator,
+    light::dop::Dop,
+    model::SkyModel,
+    ray::{Ray, SensorFrame},
+    CameraEnu,
 };
 use rayon::prelude::*;
+use sguaba::{engineering::Orientation, Bearing};
+use uom::{
+    si::{angle::radian, f64::Angle},
+    ConstZero,
+};
 
-/// Estimates pose using simulated images and a loss function.
+/// Estimates ort using simulated images and a loss function.
 pub struct PatternMatch<S> {
-    cam_params: CameraParams,
-    position: Position,
-    time: DateTime<Utc>,
+    lens: Lens,
+    model: SkyModel,
     searcher: S,
+    max_iters: usize,
 }
 
 impl<S> PatternMatch<S> {
-    pub fn new(
-        cam_params: CameraParams,
-        position: Position,
-        time: DateTime<Utc>,
-        searcher: S,
-    ) -> Self {
+    pub fn new(lens: Lens, model: SkyModel, searcher: S, max_iters: usize) -> Self {
         Self {
-            cam_params,
-            position,
-            time,
+            lens,
+            model,
             searcher,
+            max_iters,
         }
     }
 }
 
-impl<S: Searcher> Estimator for PatternMatch<S> {
-    type Output = Pose;
+impl<S: Searcher> Estimator<SensorFrame> for PatternMatch<S> {
+    type Output = Orientation<CameraEnu>;
 
-    fn estimate<I: RayIterator>(self, rays: I) -> Self::Output {
-        const MAX_ITERS: usize = 10;
-        let rays: Vec<Ray> = rays.collect();
+    fn estimate<I: RayIterator<SensorFrame>>(self, rays: I) -> Self::Output {
+        let rays: Vec<Ray<SensorFrame>> = rays.collect();
+
         self.searcher
-            .search_iter()
-            .take(MAX_ITERS)
-            .map(|pose| {
-                let camera = Camera::new(
-                    &self.cam_params,
-                    State::new(pose, self.position.clone(), self.time.clone()),
-                );
+            .orientations()
+            .take(self.max_iters)
+            .map(|ort| {
+                // Construct a camera at the new orientation.
+                let cam = Camera::new(self.lens.clone(), ort.clone());
+
+                // Find the zenith coordinate in CameraFrd.
+                let zenith_coord = cam
+                    .trace_from_sky(
+                        Bearing::<CameraEnu>::builder()
+                            .azimuth(Angle::ZERO)
+                            .elevation(Angle::HALF_TURN / 2.)
+                            .expect("elevation is on range -90 to 90")
+                            .build(),
+                    )
+                    .expect("zenith is always above the horizon");
 
                 let loss = rays
                     .par_iter()
-                    .map(|ray| {
-                        (*ray.get_aop() - *camera.simulate_pixel(ray.get_loc()).get_aop())
-                            .into_inner()
-                            .powf(2.)
-                            / (*ray.get_dop()).into_inner()
+                    .filter_map(|ray| {
+                        // Model a ray with the same CameraFrd coordinate as the
+                        // measured ray.
+                        let ray_bearing = cam
+                            .trace_from_sensor(*ray.coord())
+                            .expect("ray coordinate should always have Z of zero");
+                        // Ignore rays from below the horizon.
+                        let modelled_aop = self.model.aop(ray_bearing)?;
+                        let modelled_ray_global = Ray::new(*ray.coord(), modelled_aop, Dop::zero());
+
+                        // Transform the modelled ray from the global frame into
+                        // the sensor frame.
+                        let modelled_ray_sensor = modelled_ray_global
+                            .into_sensor_frame(zenith_coord.clone())
+                            // Camera trace_from_sky always returns a coordinate
+                            // with a zenith of zero which enforces this expect.
+                            .expect("zenith coord is has Z of zero");
+
+                        // Compute the weighted, squared difference between the
+                        // modelled ray and the measured ray.
+                        let delta = *ray.aop() - *modelled_ray_sensor.aop();
+                        let sq_diff = delta.into_inner().get::<radian>().powf(2.);
+                        let weight = 1. / (*ray.dop()).into_inner();
+                        let weighted_sq_diff = weight * sq_diff;
+
+                        Some(weighted_sq_diff)
                     })
+                    // Take the mean of the weighted, squared differences.
                     .sum::<f64>()
                     / rays.len() as f64;
 
-                Estimate { pose, loss }
+                Estimate { ort, loss }
             })
+            // Find the estimate with the smallest weighted, squared difference.
             .reduce(Estimate::min)
-            .unwrap()
-            .pose
+            .expect("at least one orientation from searcher")
+            // Return the orientation of the camera used to generate the model.
+            .ort
     }
 }
 
 struct Estimate {
-    pose: Pose,
+    ort: Orientation<CameraEnu>,
     loss: f64,
 }
 
@@ -84,108 +114,29 @@ impl Estimate {
     }
 }
 
-/// Can be converted to an iterator over poses.
+/// Can be converted to an iterator over orientations.
 ///
 /// Used by `PatternMatcher` to generate simulated images.
 pub trait Searcher {
-    type Iter: Iterator<Item = Pose>;
-    fn search_iter(self) -> Self::Iter;
+    type Iter: Iterator<Item = Orientation<CameraEnu>>;
+
+    fn orientations(self) -> Self::Iter;
 }
 
-/// A searcher implementation that provides random poses within a bounded range.
-pub struct StochasticSearch<R> {
-    sampler: Uniform<Pose>,
-    rng: R,
+pub struct VecSearch {
+    orts: Vec<Orientation<CameraEnu>>,
 }
 
-impl<R> StochasticSearch<R> {
-    /// Creates a new `StochasticSearch` bounded by `low` and `high`.
-    pub fn try_new(low: Pose, high: Pose, rng: R) -> Result<Self, Error> {
-        let sampler = Uniform::new(low, high).map_err(|err| match err {
-            rand::distr::uniform::Error::EmptyRange => Error::EmptyRange,
-            rand::distr::uniform::Error::NonFinite => Error::NonFinite,
-        })?;
-        Ok(Self { sampler, rng })
+impl VecSearch {
+    pub fn new(orts: Vec<Orientation<CameraEnu>>) -> Self {
+        Self { orts }
     }
 }
 
-impl<R: Rng + Clone> Searcher for StochasticSearch<R> {
-    type Iter = rand::distr::Iter<Uniform<Pose>, R, Pose>;
+impl Searcher for VecSearch {
+    type Iter = std::vec::IntoIter<Orientation<CameraEnu>>;
 
-    fn search_iter(self) -> Self::Iter {
-        self.sampler.sample_iter(self.rng)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::image::IntensityImage;
-    use image::{GrayImage, ImageReader};
-    use rand::SeedableRng;
-    use rand_chacha::ChaCha8Rng;
-
-    #[test]
-    fn regress_pattern_match() {
-        let image = read_image();
-        let (width, height) = image.dimensions();
-        let searcher = VecSearch::new(vec![Pose::zeros(), Pose::new(0.0, 0.0, 180.0)]);
-        let pose = IntensityImage::from_bytes(width, height, &image.into_raw())
-            .unwrap()
-            .rays()
-            .estimate(PatternMatch::new(
-                CameraParams::default(),
-                Position::kingston(),
-                "2025-06-13T16:26:47+00:00"
-                    .parse::<DateTime<Utc>>()
-                    .unwrap(),
-                searcher,
-            ));
-
-        assert_eq!(pose, Pose::new(0.0, 0.0, 180.0));
-    }
-
-    #[test]
-    fn stochastic_search() {
-        const SEED: u64 = 0;
-        let searcher = StochasticSearch::try_new(
-            Pose::new(-1.0, -1.0, 0.0),
-            Pose::new(1.0, 1.0, 360.0),
-            ChaCha8Rng::seed_from_u64(SEED),
-        )
-        .unwrap();
-
-        assert_eq!(
-            // Might fail due to reproducibility of the rng.
-            // https://rust-random.github.io/book/crate-reprod.html
-            searcher.search_iter().next().unwrap(),
-            Pose::new(0.41815083085312343, -0.0681565554207797, 251.6915673629034)
-        );
-    }
-
-    struct VecSearch {
-        buffer: Vec<Pose>,
-    }
-
-    impl VecSearch {
-        fn new(buffer: Vec<Pose>) -> Self {
-            Self { buffer }
-        }
-    }
-
-    impl Searcher for VecSearch {
-        type Iter = std::vec::IntoIter<Pose>;
-
-        fn search_iter(self) -> Self::Iter {
-            self.buffer.into_iter()
-        }
-    }
-
-    fn read_image() -> GrayImage {
-        ImageReader::open("testing/intensity.png")
-            .unwrap()
-            .decode()
-            .unwrap()
-            .into_luma8()
+    fn orientations(self) -> Self::Iter {
+        self.orts.into_iter()
     }
 }

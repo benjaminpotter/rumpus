@@ -1,219 +1,150 @@
-use crate::{
-    ray::{Aop, Dop, Ray},
-    state::State,
-};
-use nalgebra::{Rotation3, Vector3};
-use rayon::prelude::*;
+use super::{CameraEnu, CameraFrd};
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-use spa::{SolarPos, StdFloatOps};
-use std::fmt;
+use sguaba::{coordinate, engineering::Orientation, Bearing, Coordinate, Vector};
+use uom::{si::f64::*, ConstZero};
 
-/// A serializable data structure used to construct a simulated camera.
-#[derive(Clone, Copy, Serialize, Deserialize, Debug)]
-pub struct CameraParams {
-    /// Size of a pixel on the simulated sensor in micrometers.
-    pub pixel_size_um: (f64, f64),
-
-    /// The dimensions of the simulated sensor in number of pixels.
-    pub sensor_size_px: (u32, u32),
-
-    /// The distance between the simulated sensor and the focal point along the +Z axis.
-    pub focal_length_mm: f64,
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct Lens {
+    focal_length: Length,
 }
 
-impl fmt::Display for CameraParams {
-    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        unimplemented!();
-    }
-}
-
-impl Default for CameraParams {
-    fn default() -> Self {
-        Self {
-            pixel_size_um: (3.45, 3.45),
-            sensor_size_px: (2448, 2048),
-            focal_length_mm: 8.0,
+impl Lens {
+    pub fn from_focal_length(focal_length: Length) -> Option<Self> {
+        if focal_length > Length::ZERO {
+            return Some(Self { focal_length });
         }
-    }
-}
 
-impl CameraParams {
-    pub fn num_pixels(&self) -> usize {
-        (self.sensor_size_px.0 * self.sensor_size_px.1) as usize
-    }
-
-    pub fn pixels(&self) -> Vec<(u32, u32)> {
-        let width = self.sensor_size_px.0;
-        let height = self.sensor_size_px.1;
-
-        (0..height)
-            .into_iter()
-            .map(|row| (0..width).into_iter().map(move |col| (col, row)))
-            .flatten()
-            .collect()
+        None
     }
 }
 
 /// Represents a simulated sensor in the world.
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Camera {
-    pixel_size_mm: Vector3<f64>,
-    sensor_size_px: Vector3<f64>,
-    focal_point_mm: Vector3<f64>,
-    body_to_enu: Rotation3<f64>,
-    solar_vector_rad: (f64, f64),
+    lens: Lens,
+    ort: Orientation<CameraEnu>,
 }
 
 impl Camera {
-    pub fn new(params: &CameraParams, state: State) -> Self {
-        // Convert pixel size to mm.
-        let pixel_size_mm = Vector3::new(
-            params.pixel_size_um.0 / 1000.,
-            params.pixel_size_um.1 / 1000.,
-            0.,
-        );
-
-        // Convert sensor size to floating point.
-        let sensor_size_px = Vector3::new(
-            (params.sensor_size_px.0) as f64,
-            (params.sensor_size_px.1) as f64,
-            0.,
-        );
-
-        // Focal point is in the +z direction (optical axis).
-        let focal_point_mm = Vector3::new(0., 0., params.focal_length_mm);
-
-        let (pose, position, time) = state.into_inner();
-
-        // Given roll, pitch, yaw of the body frame wrt the ENU frame.
-        // Given a vector U in the ENU frame, U in the body frame can be calculated using the rotation matrix.
-        let enu_to_body: Rotation3<_> = pose.into();
-
-        // Given a vector V in the body frame, V in the ENU frame can be calculated using the rotation matrix.
-        let body_to_enu = enu_to_body.transpose();
-
-        // Given a lon, lat, and time, compute the solar azimuth and zenith angle.
-        let solar_pos: SolarPos =
-            spa::solar_position::<StdFloatOps>(time, position.lat, position.lon).unwrap();
-        let solar_vector_rad: (f64, f64) = (
-            // Measured CW from north.
-            solar_pos.azimuth,
-            // Measured between zenith and sun's center.
-            solar_pos.zenith_angle,
-        );
-
-        Self {
-            pixel_size_mm,
-            sensor_size_px,
-            focal_point_mm,
-            body_to_enu,
-            solar_vector_rad,
-        }
+    pub fn new(lens: Lens, ort: Orientation<CameraEnu>) -> Self {
+        Self { lens, ort }
     }
-}
 
-impl Camera {
-    /// Simulate a pixel using the Rayleigh sky model.
-    pub fn simulate_pixel(&self, pixel_location: &(u32, u32)) -> Ray {
-        // Compute physical pixel location on image sensor.
-        let pixel = Vector3::new(pixel_location.0 as f64, pixel_location.1 as f64, 0.);
-        let pixel = pixel - self.sensor_size_px * 0.5;
-        let phys_loc = self.pixel_size_mm.component_mul(&pixel);
+    /// Trace a point on an imaginary sensor through the lens and into the ENU
+    /// frame.
+    pub fn trace_from_sensor(&self, coord: Coordinate<CameraFrd>) -> Option<Bearing<CameraEnu>> {
+        // Point must be on sensor.
+        if coord.frd_down() != Length::ZERO {
+            return None;
+        }
 
         // Trace a ray from the physical pixel location through the focal point.
         // This approach uses the pinhole camera model.
-        let body_ray = phys_loc + self.focal_point_mm;
+        let ray_in_frd: Coordinate<CameraFrd> = coord
+            + Vector::<CameraFrd>::builder()
+                .frd_front(Length::ZERO)
+                .frd_right(Length::ZERO)
+                .frd_down(self.lens.focal_length)
+                .build();
 
-        // Transform ray from body (sensor) frame into the ENU frame.
-        let enu_ray = self.body_to_enu * body_ray;
-        let enu_ray = enu_ray.normalize();
+        // Since we are mapping the FRD's zero to the ENU orientation, the down
+        // vector will match the ENU up vector.
+        // SAFETY: The CameraFrd system only differs from the CameraEnu system
+        // by its rotation *not* any translation.
+        let camera_frd_to_enu = unsafe { self.ort.map_as_zero_in::<CameraFrd>() }.inverse();
+        let ray_in_enu = camera_frd_to_enu.transform(ray_in_frd);
 
-        // Compute the zenith and azimuth angles of the ray.
-        // Azimuth is CW from +Y.
-        // Zenith is angle from +Z in the plane defined by +Z and the ray.
-        let ray_azimuth_rad = enu_ray.x.atan2(enu_ray.y);
-        let ray_zenith_rad = enu_ray.z.acos();
-
-        // Apply Rayleigh sky model using zenith and azimuth of ray to compute AoP and DoP.
-        let (solar_azimuth_rad, solar_zenith_rad) = self.solar_vector_rad;
-
-        // TODO: Compute DoP using scattering angle.
-        let dop = 0.;
-        let aop_rad = ((ray_zenith_rad.sin() * solar_zenith_rad.cos()
-            - ray_zenith_rad.cos()
-                * (ray_azimuth_rad - solar_azimuth_rad).cos()
-                * solar_zenith_rad.sin())
-            / (ray_azimuth_rad - solar_azimuth_rad).sin()
-            / solar_zenith_rad.sin())
-        .atan();
-
-        // let z = solar_zenith_rad.cos();
-        // let a = (1. - z.powf(2.)).sqrt();
-        // let x = a * solar_azimuth_rad.sin();
-        // let y = a * solar_azimuth_rad.cos();
-        // let enu_solar_vector = Vector3::new(x, y, z);
-        // let enu_e_vector = enu_ray.cross(&enu_solar_vector).normalize();
-        // let body_e_vector = self.enu_to_body * enu_e_vector;
-
-        // let beta_rad = phys_loc.y.atan2(phys_loc.x);
-        // let z_mer = -body_ray;
-        // let y_mer = Vector3::new(-beta_rad.sin(), beta_rad.cos(), 0.);
-        // let x_mer = y_mer.cross(&z_mer);
-
-        // let aop_rad = (body_e_vector.dot(&y_mer) / body_e_vector.dot(&x_mer)).atan();
-
-        Ray::new(*pixel_location, Aop::from_rad(aop_rad), Dop::new(dop))
+        Some(
+            ray_in_enu
+                .bearing_from_origin()
+                // Enforced by check that point.z() == Length::ZERO.
+                .expect("ray_in_enu should never be colocated with CameraEnu's origin"),
+        )
     }
 
-    /// Simulates the specified pixels in parallel.
-    /// Returns a vector of pixels in the same order they were provided.
-    pub fn par_simulate_pixels(&self, pixels: &Vec<(u32, u32)>) -> Vec<Ray> {
-        pixels
-            .par_iter()
-            .map(|pixel| self.simulate_pixel(pixel))
-            .collect()
+    /// Trace a sky point from the ENU frame into the body frame and through the
+    /// lens.
+    pub fn trace_from_sky(&self, bearing: Bearing<CameraEnu>) -> Option<Coordinate<CameraFrd>> {
+        // Bearing should be above the horizon.
+        if bearing.elevation() < Angle::ZERO {
+            return None;
+        }
+
+        // Since we are mapping the FRD's zero to the ENU orientation, the down
+        // vector will match the ENU up vector.
+        // SAFETY: The CameraFrd system only differs from the CameraEnu system
+        // by rotation *not* translation.
+        let camera_enu_to_frd = unsafe { self.ort.map_as_zero_in::<CameraFrd>() };
+        let bearing_frd = camera_enu_to_frd.transform(bearing);
+
+        // Project the bearing onto the sensor plane.
+        // Bearing in FRD has azimuth taken CCW from X (forward) when looking
+        // up from positive Z (down) and elevation is positive toward negative Z.
+        // See: https://docs.rs/sguaba/latest/sguaba/systems/trait.BearingDefined.html
+        let len = -self.lens.focal_length / bearing_frd.elevation().tan();
+        Some(
+            coordinate! { f = len * bearing_frd.azimuth().cos(), r = len * bearing_frd.azimuth().sin(), d = Length::ZERO },
+        )
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::{Pose, Position};
-    use chrono::prelude::*;
+    use approx::relative_eq;
+    use quickcheck::quickcheck;
+    use uom::si::{
+        angle::degree,
+        length::{micron, millimeter},
+    };
 
-    /// Test simulation algorithm using regression.
-    /// Using commit with hash 4019279...
-    #[test]
-    fn regress_simulate() {
-        let params = CameraParams {
-            pixel_size_um: (3.45, 3.45),
-            sensor_size_px: (2448, 2048),
-            focal_length_mm: 8.0,
-        };
+    quickcheck! {
+        fn trace_roundtrip(
+            x_seed: i16,
+            y_seed: i16,
+            roll_seed: i8,
+            pitch_seed: i8,
+            yaw_seed: u16
+        ) -> quickcheck::TestResult {
+            // Construct pixel coordinates from the random seed passed by quickcheck.
+            // Aim to have pixel coordinates on range -5000 to 5000 microns.
+            let x = Length::new::<micron>(x_seed as f64 * 5000. / i16::MAX as f64);
+            let y = Length::new::<micron>(y_seed as f64 * 5000. / i16::MAX as f64);
+            let px = Coordinate::<CameraFrd>::builder()
+                .frd_front(x)
+                .frd_right(y)
+                .frd_down(Length::ZERO)
+                .build();
 
-        let state = State::new(
-            Pose::zeros(),
-            Position {
-                lat: 44.2187,
-                lon: -76.4747,
-            },
-            "2025-06-13T16:26:47+00:00"
-                .parse::<DateTime<Utc>>()
-                .unwrap(),
-        );
+            // Construct orientation from the random seed passed by quickcheck.
+            // Aim to have roll and pitch on the range -30 to 30.
+            // Aim to have yaw on the range 0 to 360.
+            let roll = Angle::new::<degree>(roll_seed as f64 * 30. / i8::MAX as f64);
+            let pitch = Angle::new::<degree>(pitch_seed as f64 * 30. / i8::MAX as f64);
+            let yaw = Angle::new::<degree>(yaw_seed as f64 * 360. / u16::MAX as f64);
+            let ort = Orientation::<CameraEnu>::tait_bryan_builder()
+                .yaw(yaw)
+                .pitch(pitch)
+                .roll(roll)
+                .build();
 
-        let rays = vec![
-            Ray::new((0, 0), Aop::from_deg(-37.420423616444666), Dop::new(0.0)),
-            Ray::new((2448, 0), Aop::from_deg(-77.361022793184380), Dop::new(0.0)),
-            Ray::new((0, 2048), Aop::from_deg(40.030473803771110), Dop::new(0.0)),
-            Ray::new(
-                (2448, 2048),
-                Aop::from_deg(62.284743078589490),
-                Dop::new(0.0),
-            ),
-        ];
+            let focal_length = Length::new::<millimeter>(8.0);
+            let lens =
+                Lens::from_focal_length(focal_length).expect("focal_length is greater than zero");
 
-        let cam = Camera::new(&params, state);
-        let pixels: Vec<(u32, u32)> = rays.iter().map(|ray| *ray.get_loc()).collect();
-        assert_eq!(rays, cam.par_simulate_pixels(&pixels));
+            let cam = Camera::new(lens, ort);
+            match cam.trace_from_sky(
+                cam.trace_from_sensor(px.clone())
+                    .expect("px has a z value of zero"),
+            ) {
+                Some(result) =>
+                    quickcheck::TestResult::from_bool(relative_eq!(px, result)),
+                // `trace_from_sensor` may produce a bearing that is below the horizon.
+                None => quickcheck::TestResult::discard(),
+            }
+        }
     }
 }

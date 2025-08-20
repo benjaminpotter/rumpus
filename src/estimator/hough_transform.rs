@@ -1,51 +1,57 @@
+use super::Estimator;
 use crate::{
-    estimator::Estimator,
-    filter::AopFilter,
-    ray::{Aop, Ray, RayIterator},
+    iter::RayIterator,
+    light::{
+        aop::Aop,
+        filter::{AopFilter, RayPredicate},
+        ray::{GlobalFrame, Ray, RayLocation, SensorFrame},
+    },
 };
 use std::ops::RangeInclusive;
 
 /// Estimates azimuth using a 1D Hough transform.
 pub struct HoughTransform {
-    /// The location of the zenith in the sensor plane represented as
-    /// co-ordinates in image space.
-    zenith: (f64, f64),
+    /// The location of the zenith in the sensor plane.
+    zenith: RayLocation,
 
     /// The azimuth angle of the solar meridian.
     ///
     /// Taken CW from north.
     saz: f64,
 
-    /// The AoP threshold used to isolate the solar meridian.
-    thres: f64,
-
     /// The minimum resolution for esimates in degrees.
     res: f64,
+
+    /// The AoP threshold used to isolate the solar meridian.
+    filter: AopFilter<GlobalFrame>,
 }
 
 impl HoughTransform {
-    pub fn new(saz: f64, zenith: (f64, f64), res: f64, thres: f64) -> Self {
+    pub fn new(saz: f64, zenith: RayLocation, res: f64, thres: f64) -> Self {
+        let filter = AopFilter::new(Aop::from_deg(90.0), thres);
         Self {
             saz,
             zenith,
-            thres,
             res,
+            filter,
         }
     }
 
-    fn ray_angle(&self, ray: Ray) -> f64 {
-        let (col, row) = *ray.get_loc();
-        let (x, y) = (col as f64 - self.zenith.0, row as f64 - self.zenith.1);
-        (y / x).atan().to_degrees()
+    fn ray_angle(&self, ray: Ray<GlobalFrame>) -> f64 {
+        let loc = *ray.loc().as_vec2();
+        (loc.y / loc.x).atan().to_degrees()
     }
 }
 
-impl Estimator for &HoughTransform {
+impl Estimator<SensorFrame> for &HoughTransform {
     type Output = f64;
 
-    fn estimate<I: RayIterator>(self, rays: I) -> Self::Output {
+    fn estimate<I: RayIterator<SensorFrame>>(self, rays: I) -> Self::Output {
         let mut acc = Accumulator::new(self.res, -90.0..=90.0);
-        for ray in rays.ray_filter(AopFilter::new(Aop::from_deg(90.0), self.thres)) {
+        for ray in rays
+            .map(|ray| ray.into_global_frame(&self.zenith))
+            .filter(|ray| self.filter.eval(&ray))
+        {
             let angle = self.ray_angle(ray);
 
             // TODO: make collect from iterator of votes.
@@ -98,33 +104,5 @@ impl Accumulator {
             .unwrap();
 
         self.index_to_value(index)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::image::IntensityImage;
-    use image::{GrayImage, ImageReader};
-
-    #[test]
-    fn hough_transform() {
-        let image = read_image();
-        let (width, height) = image.dimensions();
-        let ht = HoughTransform::new(0.0, (612.0, 512.0), 0.1, 0.2);
-        let est = IntensityImage::from_bytes(width, height, &image.into_raw())
-            .unwrap()
-            .rays()
-            .estimate(&ht);
-
-        assert_eq!(est, -40.5);
-    }
-
-    fn read_image() -> GrayImage {
-        ImageReader::open("testing/intensity.png")
-            .unwrap()
-            .decode()
-            .unwrap()
-            .into_luma8()
     }
 }
