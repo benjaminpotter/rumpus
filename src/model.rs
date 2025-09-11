@@ -1,11 +1,11 @@
-use crate::{light::aop::Aop, ray::GlobalFrame, CameraEnu};
+use crate::{CameraEnu, light::aop::Aop, ray::GlobalFrame};
 use chrono::prelude::*;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-use sguaba::{systems::Wgs84, Bearing};
+use sguaba::{Bearing, systems::Wgs84};
 use uom::{
-    si::{angle::degree, f64::Angle},
     ConstZero,
+    si::{angle::degree, f64::Angle},
 };
 
 /// Describes the skylight polarization pattern for a given earth centered
@@ -43,6 +43,11 @@ impl SkyModel {
                 .expect("solar zenith should be on the range 0 to 180")
                 .build(),
         )
+    }
+
+    /// Returns the `Bearing<CameraEnu>` towards the sun.
+    pub fn solar_bearing(&self) -> Bearing<CameraEnu> {
+        self.solar_bearing
     }
 
     /// Use the `SkyModel` to compute an `Aop` in the `GlobalFrame` at `bearing`.
