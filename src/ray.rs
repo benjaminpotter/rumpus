@@ -1,265 +1,127 @@
 use crate::{
-    estimator::Estimator,
-    filter::{RayFilter, RayPredicate},
+    light::{aop::Aop, dop::Dop, stokes::StokesVec},
+    CameraFrd,
 };
-use std::f64::consts::FRAC_PI_2;
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+use sguaba::Coordinate;
+use uom::{
+    si::f64::{Angle, Length},
+    ConstZero,
+};
 
-/// Describes the linear polarization of a ray.
-#[derive(Debug, PartialEq)]
-pub struct StokesVec {
-    inner: [f64; 3],
-}
+pub trait RayFrame: Copy + Clone + std::fmt::Debug + PartialEq {}
 
-impl StokesVec {
-    pub fn new(s0: f64, s1: f64, s2: f64) -> Self {
-        StokesVec {
-            inner: [s0, s1, s2],
-        }
-    }
-
-    /// Compute the AoP of the ray.
-    fn aop(&self) -> Aop {
-        Aop {
-            angle: (self.inner[2].atan2(self.inner[1]) / 2.).to_degrees(),
-        }
-    }
-
-    /// Compute the DoP of the ray.
-    fn dop(&self) -> Dop {
-        Dop {
-            degree: (self.inner[1].powf(2.) + self.inner[2].powf(2.)).sqrt() / self.inner[0],
-        }
-    }
-}
-
-/// Describes the e-vector orientation of a ray.
-///
-/// The angle of the e-vector must be between -90.0 and 90.0.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Aop {
-    /// The angle of the e-vector of the ray in degrees.
-    angle: f64,
-}
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct GlobalFrame;
+impl RayFrame for GlobalFrame {}
 
-impl Aop {
-    /// Creates a new `Aop` from `angle` given in radians.
-    ///
-    /// Panics if `angle` is not between -PI/2 and PI/2.
-    pub fn from_rad(angle: f64) -> Self {
-        assert!(-FRAC_PI_2 <= angle && angle <= FRAC_PI_2);
-        Self {
-            angle: angle.to_degrees(),
-        }
-    }
-
-    /// Creates a new `Aop` from `angle` given in degrees.
-    ///
-    /// Panics if `angle` is not between -90.0 and 90.0.
-    pub fn from_deg(angle: f64) -> Self {
-        assert!(-90.0 <= angle && angle <= 90.0);
-        Self { angle }
-    }
-
-    fn from_deg_wrap(mut angle: f64) -> Self {
-        if angle < -90.0 {
-            while angle < 0.0 {
-                angle += 180.0;
-            }
-        } else if angle > 90.0 {
-            while angle > 0.0 {
-                angle -= 180.0;
-            }
-        }
-
-        Self::from_deg(angle)
-    }
-
-    /// Returns true if `other` is within `thres` of `self` inclusive and
-    /// handling wrapping.
-    pub fn in_thres(&self, other: &Aop, thres: f64) -> bool {
-        (*self - *other).angle.abs() <= thres
-    }
-
-    pub fn into_inner(self) -> f64 {
-        self.angle
-    }
-}
-
-impl std::ops::Sub for Aop {
-    type Output = Self;
-
-    fn sub(self, other: Self) -> Self::Output {
-        Self::from_deg_wrap(self.angle - other.angle)
-    }
-}
-
-/// Describes the intensity ratio of polarized light in a ray.
-#[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
-pub struct Dop {
-    degree: f64,
-}
-
-impl Dop {
-    /// Create a new `Dop` from `degree`.
-    ///
-    /// Panics if `degree` is not between 0.0 and 1.0.
-    pub fn new(degree: f64) -> Self {
-        assert!(0.0 <= degree && degree <= 1.0);
-        Self { degree }
-    }
-
-    /// Returns a new `Dop` clamp between 0.0 and `max`.
-    ///
-    /// Panics if `max` is not between 0.0 and 1.0.
-    pub fn clamp(self, max: f64) -> Self {
-        assert!(0.0 <= max && max <= 1.0);
-        Self {
-            degree: self.degree.clamp(0.0, max),
-        }
-    }
-
-    pub fn into_inner(self) -> f64 {
-        self.degree
-    }
-}
-
-impl From<f64> for Dop {
-    fn from(degree: f64) -> Self {
-        Self { degree }
-    }
-}
-
-// Ray should probably operate with respect to the ENU frame.
-// Right now it uses the image frame.
-//
-// Motivation:
-// The estimation algorithms require the global frame to handle non-zero pitch
-// and roll values.
-//
-// - Used in ht to compute angle of ray wrt east
-// - Making the assumption that matching the transform to the zenith pixel
-// - zenith position is only constrained by three angles
-//
-// SensorParams should be called CameraParams
-// Should hold a state
-// State should hold a position time and pose
-// Each ray should get a Vector3 that corresponds to the global frame
-// Shoots from the pixel location into the sky
-// Directly corresponds to the sensor's ray in enu frame
-//
-// Image rays needs to take a CameraParams in order to generate this
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct SensorFrame;
+impl RayFrame for SensorFrame {}
 
 /// Describes the angle and degree of polarization for a single ray.
-#[derive(Debug, PartialEq)]
-pub struct Ray {
-    /// Location of pixel that measured the ray.
-    loc: (u32, u32),
-    angle: Aop,
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct Ray<Frame: RayFrame> {
+    /// Coordinate that ray was measured.
+    coord: Coordinate<CameraFrd>,
+
+    /// Angle of polarization of the `Ray`.
+    ///
+    /// This refers to the e-vector angle with respect to `Frame`.
+    angle: Aop<Frame>,
+
+    /// Degree of polarization of the `Ray`.
     degree: Dop,
+
+    _phan: std::marker::PhantomData<Frame>,
 }
 
-impl Ray {
-    pub fn new(loc: (u32, u32), angle: Aop, degree: Dop) -> Self {
-        Self { loc, angle, degree }
-    }
-
-    pub fn from_stokes(loc: (u32, u32), stokes: StokesVec) -> Self {
+impl<Frame: RayFrame> Ray<Frame> {
+    /// Creates a new `Ray` from a polarization `angle` and `degree`.
+    pub fn new(coord: Coordinate<CameraFrd>, angle: Aop<Frame>, degree: Dop) -> Self {
         Self {
-            loc,
-            angle: stokes.aop(),
-            degree: stokes.dop(),
+            coord,
+            angle,
+            degree,
+            _phan: std::marker::PhantomData,
         }
     }
 
-    pub fn get_loc(&self) -> &(u32, u32) {
-        &self.loc
+    pub fn from_stokes(coord: Coordinate<CameraFrd>, stokes: StokesVec<Frame>) -> Self {
+        Self::new(coord, stokes.aop(), stokes.dop())
     }
 
-    pub fn get_aop(&self) -> &Aop {
+    pub fn coord(&self) -> &Coordinate<CameraFrd> {
+        &self.coord
+    }
+
+    pub fn aop(&self) -> &Aop<Frame> {
         &self.angle
     }
 
-    pub fn get_dop(&self) -> &Dop {
+    pub fn dop(&self) -> &Dop {
         &self.degree
     }
-}
 
-pub trait RayIterator: Iterator<Item = Ray> {
-    fn ray_filter<P: RayPredicate>(self, pred: P) -> RayFilter<Self, P>
-    where
-        Self: Sized,
-    {
-        RayFilter::new(self, pred)
-    }
-
-    fn estimate<E, O>(self, estimator: E) -> O
-    where
-        Self: Sized,
-        E: Estimator<Output = O>,
-    {
-        estimator.estimate(self)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::f64::consts::{FRAC_PI_4, PI};
-
-    #[test]
-    fn create_aop_from_rad() {
-        assert_eq!(45.0, Aop::from_rad(FRAC_PI_4).angle);
-    }
-
-    #[test]
-    #[should_panic]
-    fn create_invalid_aop() {
-        assert_eq!(180.0, Aop::from_rad(PI).angle);
-    }
-
-    #[test]
-    #[should_panic]
-    fn create_invalid_dop() {
-        assert_eq!(-1.0, Dop::new(-1.0).degree);
-    }
-
-    #[test]
-    fn sub_aop() {
-        assert_eq!(
-            Aop::from_deg(1.0),
-            Aop::from_deg(-90.0) - Aop::from_deg(89.0)
-        );
-
-        assert_eq!(
-            Aop::from_deg(0.0),
-            Aop::from_deg(-90.0) - Aop::from_deg(90.0)
-        );
-
-        assert_eq!(
-            Aop::from_deg(0.0),
-            Aop::from_deg(-90.0) - Aop::from_deg(-90.0)
-        );
-    }
-
-    #[test]
-    fn threshold_aop() {
-        const THRES: f64 = 0.1;
-        let center = Aop::from_deg(90.0);
-
-        for ref case in vec![
-            Aop::from_deg(89.90),
-            Aop::from_deg(-90.0),
-            Aop::from_deg(-89.90),
-        ] {
-            assert_eq!(true, center.in_thres(case, THRES));
+    /// Returns the angle between `self.coord` taken from `origin` with respect
+    /// to the FRD front direction.
+    ///
+    /// Returns `None` if `zenith_loc` is not on the sensor ie it does not have
+    /// a Z component of zero.
+    fn angle_to(&self, origin: Coordinate<CameraFrd>) -> Option<Angle> {
+        if origin.frd_down() != Length::ZERO {
+            return None;
         }
 
-        for ref case in vec![
-            Aop::from_deg(89.89),
-            Aop::from_deg(45.0),
-            Aop::from_deg(-89.89),
-        ] {
-            assert_eq!(false, center.in_thres(case, THRES));
-        }
+        let coord_from_origin = self.coord - origin;
+        Some(
+            coord_from_origin
+                .frd_right()
+                .atan2(coord_from_origin.frd_front()),
+        )
+    }
+}
+
+impl Ray<GlobalFrame> {
+    /// Transforms the Ray from the GlobalFrame into the SensorFrame.
+    ///
+    /// Returns `None` if `zenith_coord` is not on the sensor ie it does not have
+    /// a Z component of zero.
+    /// Requires a zenith location because the transform occurs with reference
+    /// to the global up direction.
+    pub fn into_sensor_frame(
+        self,
+        zenith_coord: Coordinate<CameraFrd>,
+    ) -> Option<Ray<SensorFrame>> {
+        let offset = self.angle_to(zenith_coord)?;
+        Some(Ray::new(
+            self.coord,
+            self.angle.into_sensor_frame(offset),
+            self.degree,
+        ))
+    }
+}
+
+impl Ray<SensorFrame> {
+    /// Transforms the Ray from the SensorFrame into the GlobalFrame.
+    ///
+    /// Returns `None` if `zenith_coord` is not on the sensor ie it does not have
+    /// a Z component of zero.
+    /// Requires a zenith location because the transform occurs with reference
+    /// to the global up direction.
+    pub fn into_global_frame(
+        self,
+        zenith_coord: Coordinate<CameraFrd>,
+    ) -> Option<Ray<GlobalFrame>> {
+        let offset = self.angle_to(zenith_coord)?;
+        Some(Ray::new(
+            self.coord,
+            self.angle.into_global_frame(offset),
+            self.degree,
+        ))
     }
 }

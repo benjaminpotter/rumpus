@@ -1,30 +1,35 @@
-use crate::ray::{Aop, Dop, Ray};
+use crate::{
+    iter::RayIterator,
+    light::{aop::Aop, dop::Dop},
+    ray::{Ray, RayFrame},
+};
+use uom::si::f64::Angle;
 
 /// A predicate over a ray.
 ///
 /// Implementors of this `trait` are used with [`RayFilter`].
 ///
 /// [`RayFilter`]: RayFilter
-pub trait RayPredicate {
-    fn eval(&self, ray: &Ray) -> bool;
+pub trait RayPredicate<Frame: RayFrame> {
+    fn eval(&self, ray: &Ray<Frame>) -> bool;
 }
 
 /// A predicate that holds on rays with
 /// `center - thres <= Aop <= center + thres` and handles wrapping.
-pub struct AopFilter {
-    center: Aop,
-    thres: f64,
+pub struct AopFilter<Frame: RayFrame> {
+    center: Aop<Frame>,
+    thres: Angle,
 }
 
-impl AopFilter {
-    pub fn new(center: Aop, thres: f64) -> Self {
+impl<Frame: RayFrame> AopFilter<Frame> {
+    pub fn new(center: Aop<Frame>, thres: Angle) -> Self {
         Self { center, thres }
     }
 }
 
-impl RayPredicate for AopFilter {
-    fn eval(&self, ray: &Ray) -> bool {
-        self.center.in_thres(ray.get_aop(), self.thres)
+impl<Frame: RayFrame> RayPredicate<Frame> for AopFilter<Frame> {
+    fn eval(&self, ray: &Ray<Frame>) -> bool {
+        self.center.in_thres(ray.aop(), self.thres)
     }
 }
 
@@ -39,9 +44,9 @@ impl DopFilter {
     }
 }
 
-impl RayPredicate for DopFilter {
-    fn eval(&self, ray: &Ray) -> bool {
-        self.min <= *ray.get_dop()
+impl<Frame: RayFrame> RayPredicate<Frame> for DopFilter {
+    fn eval(&self, ray: &Ray<Frame>) -> bool {
+        self.min <= *ray.dop()
     }
 }
 
@@ -63,47 +68,21 @@ impl<I, P> RayFilter<I, P> {
     }
 }
 
-impl<I, P> Iterator for RayFilter<I, P>
+impl<I, P, Frame: RayFrame> Iterator for RayFilter<I, P>
 where
-    I: Iterator<Item = Ray>,
-    P: RayPredicate,
+    I: Iterator<Item = Ray<Frame>>,
+    P: RayPredicate<Frame>,
 {
-    type Item = Ray;
+    type Item = Ray<Frame>;
     fn next(&mut self) -> Option<Self::Item> {
-        self.iter.find(|ray| self.pred.eval(&ray))
+        self.iter.find(|ray| self.pred.eval(ray))
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{image::IntensityImage, ray::Ray};
-    use image::{GrayImage, ImageReader};
-
-    #[test]
-    fn dop_filter() {
-        const MIN: f64 = 0.65;
-        let rays = parse_rays();
-        let filt = DopFilter::new(MIN);
-        for ray in rays {
-            assert_eq!(Dop::new(MIN) <= *ray.get_dop(), filt.eval(&ray));
-        }
-    }
-
-    fn read_image() -> GrayImage {
-        ImageReader::open("testing/intensity.png")
-            .unwrap()
-            .decode()
-            .unwrap()
-            .into_luma8()
-    }
-
-    fn parse_rays() -> Vec<Ray> {
-        let image = read_image();
-        let (width, height) = image.dimensions();
-        IntensityImage::from_bytes(width, height, &image.into_raw())
-            .unwrap()
-            .rays()
-            .collect()
-    }
+// All of RayIterator's functions are defined using Iterator.
+impl<I, P, Frame: RayFrame> RayIterator<Frame> for RayFilter<I, P>
+where
+    I: Iterator<Item = Ray<Frame>>,
+    P: RayPredicate<Frame>,
+{
 }
