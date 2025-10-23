@@ -1,3 +1,4 @@
+use crate::light::dop::Dop;
 use crate::{CameraEnu, light::aop::Aop, ray::GlobalFrame};
 use chrono::prelude::*;
 #[cfg(feature = "serde")]
@@ -5,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use sguaba::{Bearing, systems::Wgs84};
 use uom::{
     ConstZero,
-    si::{angle::degree, f64::Angle},
+    si::{angle::degree, f64::Angle, ratio::ratio},
 };
 
 /// Describes the skylight polarization pattern for a given earth centered
@@ -68,6 +69,29 @@ impl SkyModel {
         .atan2((azimuth - solar_azimuth).sin() * solar_zenith.sin());
 
         Some(Aop::from_angle_wrapped(angle))
+    }
+
+    /// Use the `SkyModel` to compute a `Dop` at `bearing`.
+    ///
+    /// Returns `None` if `bearing` is below the horizon ie it has elevation
+    /// less than zero.
+    pub fn dop(&self, bearing: Bearing<CameraEnu>) -> Option<Dop> {
+        if bearing.elevation() < Angle::ZERO {
+            return None;
+        }
+
+        let max_dop = 1.0;
+        let solar_azimuth = self.solar_bearing.azimuth();
+        let solar_zenith = Angle::HALF_TURN / 2. - self.solar_bearing.elevation();
+        let azimuth = bearing.azimuth();
+        let zenith = Angle::HALF_TURN / 2. - bearing.elevation();
+        let scattering_angle = (zenith.cos() * solar_zenith.cos()
+            + zenith.sin() * solar_zenith.sin() * (azimuth - solar_azimuth).cos())
+        .acos();
+        let deg = max_dop * scattering_angle.sin().get::<ratio>().powf(2.0)
+            / (1.0 + scattering_angle.cos().get::<ratio>().powf(2.0));
+
+        Some(Dop::new(deg))
     }
 }
 
