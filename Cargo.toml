@@ -12,6 +12,8 @@ spa = "0.5.1"
 serde = { version="1.0", features=["derive"], optional=true }
 sguaba = "0.9.4"
 uom = "0.37.0"
+thiserror = "2.0.17"
+num = "0.4.3"
 
 [features]
 serde = ["dep:serde", "nalgebra/serde-serialize" ]

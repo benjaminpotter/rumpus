@@ -1,3 +1,5 @@
+use std::ops::Deref;
+
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -6,6 +8,14 @@ use serde::{Deserialize, Serialize};
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Dop {
     degree: f64,
+}
+
+impl Deref for Dop {
+    type Target = f64;
+
+    fn deref(&self) -> &Self::Target {
+        &self.degree
+    }
 }
 
 impl Dop {

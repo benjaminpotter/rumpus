@@ -1,13 +1,20 @@
+use std::ops::{Deref, Range};
+
 use crate::{
+    CameraFrd,
     error::Error,
     iter::RayIterator,
     light::stokes::StokesVec,
     ray::{Ray, RayFrame, SensorFrame},
-    CameraFrd,
 };
+use num::Num;
 use rayon::prelude::*;
 use sguaba::Coordinate;
-use uom::{si::f64::Length, si::ratio::ratio, ConstZero};
+use thiserror::Error;
+use uom::{
+    ConstZero,
+    si::{angle::degree, f64::Length, length::micron, ratio::ratio},
+};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct IntensityPixel {
@@ -230,67 +237,214 @@ impl ImageSensor {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct Matrix<T> {
+    elements: Vec<T>,
+    rows: usize,
+    cols: usize,
+}
+
+impl<T> Matrix<T> {
+    fn from_elements(
+        elements: impl IntoIterator<Item = T>,
+        rows: usize,
+        cols: usize,
+    ) -> Result<Self, ImageError> {
+        let elements: Vec<_> = elements.into_iter().collect();
+        let len = elements.len();
+        if rows * cols != len {
+            Err(ImageError::SizeMismatch { rows, cols, len })
+        } else {
+            Ok(Self {
+                elements,
+                rows,
+                cols,
+            })
+        }
+    }
+
+    pub fn iter_elements(&self) -> impl Iterator<Item = &T> {
+        self.elements.iter()
+    }
+
+    pub fn map_by<U>(&self, map: impl Fn(&T) -> U) -> Matrix<U> {
+        let elements: Vec<_> = self.iter_elements().map(|elem| map(elem)).collect();
+        Matrix::from_elements(elements, self.rows, self.cols)
+            // This is fine as long as the type continues to maintain the invariant that the length
+            // of the elements list matches the size of the extents.
+            .expect("len of elements matches extents")
+    }
+
+    fn index(&self, row: usize, col: usize) -> usize {
+        row * self.cols + col
+    }
+
+    pub fn get(&self, row: usize, col: usize) -> &T {
+        let index = self.index(row, col);
+        &self.elements[index]
+    }
+
+    pub fn get_mut(&mut self, row: usize, col: usize) -> &mut T {
+        let index = self.index(row, col);
+        &mut self.elements[index]
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct RayImage<Frame: RayFrame> {
-    pixels: Vec<Option<Ray<Frame>>>,
+    inner: Matrix<Option<Ray<Frame>>>,
     _phan: std::marker::PhantomData<Frame>,
 }
 
+#[derive(Debug, Error)]
+pub enum ImageError {
+    #[error("multiple rays map to one pixel: row = {row}, col = {col}")]
+    AmbiguousRay { row: usize, col: usize },
+
+    #[error("ray location is out of bounds: ({} um, {} um) ", coord.frd_front().get::<micron>(), coord.frd_right().get::<micron>())]
+    OutOfBoundsRay { coord: Coordinate<CameraFrd> },
+
+    #[error("length of data does not match size of extents: expected {} found {len}", rows * cols)]
+    SizeMismatch {
+        rows: usize,
+        cols: usize,
+        len: usize,
+    },
+}
+
 impl<Frame: RayFrame> RayImage<Frame> {
-    pub fn new() -> Self {
+    pub fn from_matrix(matrix: Matrix<Option<Ray<Frame>>>) -> Self {
         Self {
-            pixels: Vec::new(),
+            inner: matrix,
             _phan: std::marker::PhantomData,
         }
     }
 
-    pub fn from_pixels(pixels: Vec<Option<Ray<Frame>>>) -> Self {
-        Self {
-            pixels,
-            _phan: std::marker::PhantomData,
-        }
+    pub fn from_pixels(
+        pixels: Vec<Option<Ray<Frame>>>,
+        rows: usize,
+        cols: usize,
+    ) -> Result<Self, ImageError> {
+        let matrix = Matrix::from_elements(pixels, rows, cols)?;
+        Ok(Self::from_matrix(matrix))
     }
 
-    pub fn from_rays_with_sensor<I>(rays: I, sensor: &ImageSensor) -> Option<Self>
+    pub fn from_rays_with_sensor<I>(rays: I, sensor: &ImageSensor) -> Result<Self, ImageError>
     where
         I: IntoIterator<Item = Ray<Frame>>,
     {
-        let mut pixels = vec![None; sensor.pixel_count()];
+        let pixels = vec![None; sensor.pixel_count()];
+        let mut matrix = Matrix::from_elements(pixels, sensor.rows(), sensor.cols())?;
+
         for ray in rays {
-            if let Some((row, col)) = sensor.at_coord(*ray.coord()) {
-                let index = row as usize * sensor.cols() + col as usize;
-                if pixels[index].is_some() {
-                    return None;
+            let coord = ray.coord();
+            if let Some((row, col)) = sensor.at_coord(*coord) {
+                let row = row as usize;
+                let col = col as usize;
+
+                if matrix.get_mut(row, col).replace(ray).is_some() {
+                    return Err(ImageError::AmbiguousRay { row, col });
                 }
-                pixels[index] = Some(ray);
             } else {
-                return None;
+                return Err(ImageError::OutOfBoundsRay { coord: *coord });
             }
         }
 
-        Some(Self::from_pixels(pixels))
+        Ok(Self::from_matrix(matrix))
     }
 
-    pub fn ray_pixels<'a>(&'a self) -> RayPixels<'a, Frame> {
-        RayPixels::new(self.pixels.iter())
+    pub fn pixels(&self) -> impl Iterator<Item = Option<&Ray<Frame>>> {
+        self.inner.iter_elements().map(|elem| elem.as_ref())
+    }
+
+    pub fn into_matrix(self) -> Matrix<Option<Ray<Frame>>> {
+        todo!()
+    }
+
+    pub fn aop_bytes<M: ColorMap>(&self, color_map: &M) -> Vec<u8> {
+        self.pixels()
+            .map(|pixel| {
+                pixel
+                    .map(|ray| ray.aop().get::<degree>())
+                    .unwrap_or(f64::NAN)
+            })
+            .flat_map(|value| color_map.map(value, -90.0, 90.0))
+            .collect()
+    }
+
+    pub fn dop_bytes<M: ColorMap>(&self, color_map: &M) -> Vec<u8> {
+        self.pixels()
+            .map(|pixel| pixel.map(|ray| ray.dop().into_inner()).unwrap_or(f64::NAN))
+            .flat_map(|value| color_map.map(value, 0.0, 1.0))
+            .collect()
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct RayPixels<'a, Frame: RayFrame> {
-    inner: std::slice::Iter<'a, Option<Ray<Frame>>>,
+pub trait ColorMap {
+    fn map(&self, value: f64, min: f64, max: f64) -> [u8; 3];
 }
 
-impl<'a, Frame: RayFrame> RayPixels<'a, Frame> {
-    fn new(inner: std::slice::Iter<'a, Option<Ray<Frame>>>) -> Self {
-        Self { inner }
-    }
-}
+pub struct Jet;
+impl ColorMap for Jet {
+    fn map(&self, value: f64, min: f64, max: f64) -> [u8; 3] {
+        if value < min || value > max {
+            return [255, 255, 255];
+        }
 
-impl<'a, Frame: RayFrame> Iterator for RayPixels<'a, Frame> {
-    type Item = &'a Option<Ray<Frame>>;
+        let interval_width = max - min;
+        let x_norm = ((value - min) / interval_width * 255.).floor() as u8;
 
-    fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next()
+        let r = vec![
+            255,
+            x_norm
+                .checked_sub(96)
+                .unwrap_or(u8::MIN)
+                .checked_mul(4)
+                .unwrap_or(u8::MAX),
+            255 - x_norm
+                .checked_sub(224)
+                .unwrap_or(u8::MIN)
+                .checked_mul(4)
+                .unwrap_or(u8::MAX),
+        ]
+        .into_iter()
+        .min()
+        .unwrap();
+
+        let g = vec![
+            255,
+            x_norm
+                .checked_sub(32)
+                .unwrap_or(u8::MIN)
+                .checked_mul(4)
+                .unwrap_or(u8::MAX),
+            255 - x_norm
+                .checked_sub(160)
+                .unwrap_or(u8::MIN)
+                .checked_mul(4)
+                .unwrap_or(u8::MAX),
+        ]
+        .into_iter()
+        .min()
+        .unwrap();
+
+        let b = vec![
+            255,
+            x_norm
+                .checked_add(127)
+                .unwrap_or(u8::MIN)
+                .checked_mul(4)
+                .unwrap_or(u8::MAX),
+            255 - x_norm
+                .checked_sub(96)
+                .unwrap_or(u8::MIN)
+                .checked_mul(4)
+                .unwrap_or(u8::MAX),
+        ]
+        .into_iter()
+        .min()
+        .unwrap();
+
+        [r, g, b]
     }
 }
 

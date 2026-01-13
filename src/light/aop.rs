@@ -1,6 +1,7 @@
 use crate::ray::{GlobalFrame, RayFrame, SensorFrame};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+use std::ops::Deref;
 use uom::si::f64::Angle;
 
 /// Describes the e-vector orientation of a ray.
@@ -12,6 +13,14 @@ pub struct Aop<Frame: RayFrame> {
     /// The angle of the e-vector of the ray.
     angle: Angle,
     _phan: std::marker::PhantomData<Frame>,
+}
+
+impl<Frame: RayFrame> Deref for Aop<Frame> {
+    type Target = Angle;
+
+    fn deref(&self) -> &Self::Target {
+        &self.angle
+    }
 }
 
 impl<Frame: RayFrame> Aop<Frame> {

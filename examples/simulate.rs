@@ -65,7 +65,7 @@ fn main() {
     // Map the AoP values in the RayImage to RGB colours.
     // Draw missing pixels as white.
     let aop_image: Vec<u8> = ray_image
-        .ray_pixels()
+        .pixels()
         .flat_map(|pixel| match pixel {
             Some(ray) => to_rgb(ray.aop().angle().get::<degree>(), -90.0, 90.0)
                 .expect("aop in between -90 and 90"),
@@ -76,7 +76,7 @@ fn main() {
     // Map the DoP values in the RayImage to RGB colours.
     // Draw missing pixels as white.
     let dop_image: Vec<u8> = ray_image
-        .ray_pixels()
+        .pixels()
         .flat_map(|pixel| match pixel {
             Some(ray) => to_rgb(ray.dop().into_inner(), 0.0, 1.0).expect("dop in between 0 and 1"),
             None => [255, 255, 255],
