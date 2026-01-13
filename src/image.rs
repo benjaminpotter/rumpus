@@ -287,6 +287,14 @@ impl<T> Matrix<T> {
         let index = self.index(row, col);
         &mut self.elements[index]
     }
+
+    pub fn rows(&self) -> usize {
+        self.rows
+    }
+
+    pub fn cols(&self) -> usize {
+        self.cols
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -350,6 +358,14 @@ impl<Frame: RayFrame> RayImage<Frame> {
         }
 
         Ok(Self::from_matrix(matrix))
+    }
+
+    pub fn rows(&self) -> usize {
+        self.inner.rows()
+    }
+
+    pub fn cols(&self) -> usize {
+        self.inner.cols()
     }
 
     pub fn pixels(&self) -> impl Iterator<Item = Option<&Ray<Frame>>> {

@@ -43,8 +43,8 @@ fn main() {
     image::save_buffer(
         &output_path,
         &ray_image.aop_bytes(&Jet),
-        intensity_image.width().into(),
-        intensity_image.height().into(),
+        ray_image.cols() as u32,
+        ray_image.rows() as u32,
         image::ExtendedColorType::Rgb8,
     )
     .expect("valid image and path");
