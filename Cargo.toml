@@ -23,4 +23,5 @@ image = { version="0.25.6", features=["rayon"] }
 quickcheck = "1.0.3"
 rstest = "0.26.1"
 approx = "0.5.1"
+insta = "1.46.1"
 
