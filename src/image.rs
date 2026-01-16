@@ -1,5 +1,3 @@
-use std::ops::{Deref, Range};
-
 use crate::{
     CameraFrd,
     error::Error,
@@ -7,7 +5,6 @@ use crate::{
     light::stokes::StokesVec,
     ray::{Ray, RayFrame, SensorFrame},
 };
-use num::Num;
 use rayon::prelude::*;
 use sguaba::Coordinate;
 use thiserror::Error;
@@ -15,6 +12,83 @@ use uom::{
     ConstZero,
     si::{angle::degree, f64::Length, length::micron, ratio::ratio},
 };
+
+#[derive(Debug, Error)]
+pub enum ImageError {
+    #[error("multiple rays map to one pixel: row = {row}, col = {col}")]
+    AmbiguousRay { row: usize, col: usize },
+
+    #[error("ray location is out of bounds: ({} um, {} um) ", coord.frd_front().get::<micron>(), coord.frd_right().get::<micron>())]
+    OutOfBoundsRay { coord: Coordinate<CameraFrd> },
+
+    #[error("length of data does not match size of extents: expected {} found {len}", rows * cols)]
+    SizeMismatch {
+        rows: usize,
+        cols: usize,
+        len: usize,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct Matrix<T> {
+    elements: Vec<T>,
+    rows: usize,
+    cols: usize,
+}
+
+impl<T> Matrix<T> {
+    fn from_elements(
+        elements: impl IntoIterator<Item = T>,
+        rows: usize,
+        cols: usize,
+    ) -> Result<Self, ImageError> {
+        let elements: Vec<_> = elements.into_iter().collect();
+        let len = elements.len();
+        if rows * cols != len {
+            Err(ImageError::SizeMismatch { rows, cols, len })
+        } else {
+            Ok(Self {
+                elements,
+                rows,
+                cols,
+            })
+        }
+    }
+
+    fn iter_elements(&self) -> impl Iterator<Item = &T> {
+        self.elements.iter()
+    }
+
+    fn map_by<U>(&self, map: impl Fn(&T) -> U) -> Matrix<U> {
+        let elements: Vec<_> = self.iter_elements().map(|elem| map(elem)).collect();
+        Matrix::from_elements(elements, self.rows, self.cols)
+            // This is fine as long as the type continues to maintain the invariant that the length
+            // of the elements list matches the size of the extents.
+            .expect("len of elements matches extents")
+    }
+
+    fn index(&self, row: usize, col: usize) -> usize {
+        row * self.cols + col
+    }
+
+    fn get(&self, row: usize, col: usize) -> &T {
+        let index = self.index(row, col);
+        &self.elements[index]
+    }
+
+    fn get_mut(&mut self, row: usize, col: usize) -> &mut T {
+        let index = self.index(row, col);
+        &mut self.elements[index]
+    }
+
+    fn rows(&self) -> usize {
+        self.rows
+    }
+
+    fn cols(&self) -> usize {
+        self.cols
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct IntensityPixel {
@@ -237,90 +311,13 @@ impl ImageSensor {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Matrix<T> {
-    elements: Vec<T>,
-    rows: usize,
-    cols: usize,
-}
-
-impl<T> Matrix<T> {
-    fn from_elements(
-        elements: impl IntoIterator<Item = T>,
-        rows: usize,
-        cols: usize,
-    ) -> Result<Self, ImageError> {
-        let elements: Vec<_> = elements.into_iter().collect();
-        let len = elements.len();
-        if rows * cols != len {
-            Err(ImageError::SizeMismatch { rows, cols, len })
-        } else {
-            Ok(Self {
-                elements,
-                rows,
-                cols,
-            })
-        }
-    }
-
-    pub fn iter_elements(&self) -> impl Iterator<Item = &T> {
-        self.elements.iter()
-    }
-
-    pub fn map_by<U>(&self, map: impl Fn(&T) -> U) -> Matrix<U> {
-        let elements: Vec<_> = self.iter_elements().map(|elem| map(elem)).collect();
-        Matrix::from_elements(elements, self.rows, self.cols)
-            // This is fine as long as the type continues to maintain the invariant that the length
-            // of the elements list matches the size of the extents.
-            .expect("len of elements matches extents")
-    }
-
-    fn index(&self, row: usize, col: usize) -> usize {
-        row * self.cols + col
-    }
-
-    pub fn get(&self, row: usize, col: usize) -> &T {
-        let index = self.index(row, col);
-        &self.elements[index]
-    }
-
-    pub fn get_mut(&mut self, row: usize, col: usize) -> &mut T {
-        let index = self.index(row, col);
-        &mut self.elements[index]
-    }
-
-    pub fn rows(&self) -> usize {
-        self.rows
-    }
-
-    pub fn cols(&self) -> usize {
-        self.cols
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
 pub struct RayImage<Frame: RayFrame> {
     inner: Matrix<Option<Ray<Frame>>>,
     _phan: std::marker::PhantomData<Frame>,
 }
 
-#[derive(Debug, Error)]
-pub enum ImageError {
-    #[error("multiple rays map to one pixel: row = {row}, col = {col}")]
-    AmbiguousRay { row: usize, col: usize },
-
-    #[error("ray location is out of bounds: ({} um, {} um) ", coord.frd_front().get::<micron>(), coord.frd_right().get::<micron>())]
-    OutOfBoundsRay { coord: Coordinate<CameraFrd> },
-
-    #[error("length of data does not match size of extents: expected {} found {len}", rows * cols)]
-    SizeMismatch {
-        rows: usize,
-        cols: usize,
-        len: usize,
-    },
-}
-
 impl<Frame: RayFrame> RayImage<Frame> {
-    pub fn from_matrix(matrix: Matrix<Option<Ray<Frame>>>) -> Self {
+    fn from_matrix(matrix: Matrix<Option<Ray<Frame>>>) -> Self {
         Self {
             inner: matrix,
             _phan: std::marker::PhantomData,
@@ -370,10 +367,6 @@ impl<Frame: RayFrame> RayImage<Frame> {
 
     pub fn pixels(&self) -> impl Iterator<Item = Option<&Ray<Frame>>> {
         self.inner.iter_elements().map(|elem| elem.as_ref())
-    }
-
-    pub fn into_matrix(self) -> Matrix<Option<Ray<Frame>>> {
-        todo!()
     }
 
     pub fn aop_bytes<M: ColorMap>(&self, color_map: &M) -> Vec<u8> {
