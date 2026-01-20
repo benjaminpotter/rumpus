@@ -1,94 +1,94 @@
-use super::{CameraEnu, CameraFrd};
+use std::marker::PhantomData;
+
+use nalgebra::Vector2;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-use sguaba::{coordinate, engineering::Orientation, Bearing, Coordinate, Vector};
-use uom::{si::f64::*, ConstZero};
+use sguaba::{
+    Bearing, Coordinate, Vector, coordinate, engineering::Orientation, math::RigidBodyTransform,
+};
+use uom::{ConstZero, si::f64::*};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct Lens {
+pub struct SensorCoordinate<In> {
+    coordinate: Vector2<f64>,
+    _in: PhantomData<In>,
+}
+
+impl<In> SensorCoordinate<In> {
+    pub fn new() -> Self {
+        Self {
+            // TODO: This needs to be passed in somehow.
+            coordinate: Vector2::default(),
+            _in: PhantomData,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct RayBearing<In> {
+    // TODO: This needs to hold actual data.
+    // TODO: RayBearing should always be above the horizon.
+    _in: PhantomData<In>,
+}
+
+impl<In> RayBearing<In> {
+    pub fn new() -> Self {
+        Self { _in: PhantomData }
+    }
+}
+
+pub trait Camera<In> {
+    fn trace_backward(&self, coord: SensorCoordinate<In>) -> RayBearing<In>;
+    fn trace_forward(&self, bearing: RayBearing<In>) -> SensorCoordinate<In>;
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct PinholeCamera {
     focal_length: Length,
 }
 
-impl Lens {
-    pub fn from_focal_length(focal_length: Length) -> Option<Self> {
-        if focal_length > Length::ZERO {
-            return Some(Self { focal_length });
+impl PinholeCamera {
+    pub fn from_focal_length(focal_length: Length) -> Self {
+        if focal_length <= Length::ZERO {
+            panic!("focal length must be greater than zero");
         }
 
-        None
+        Self { focal_length }
     }
 }
 
-/// Represents a simulated sensor in the world.
-#[derive(Clone, Copy, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct Camera {
-    lens: Lens,
-    ort: Orientation<CameraEnu>,
-}
-
-impl Camera {
-    pub fn new(lens: Lens, ort: Orientation<CameraEnu>) -> Self {
-        Self { lens, ort }
-    }
-
-    /// Trace a point on an imaginary sensor through the lens and into the ENU
-    /// frame.
-    pub fn trace_from_sensor(&self, coord: Coordinate<CameraFrd>) -> Option<Bearing<CameraEnu>> {
-        // Point must be on sensor.
-        if coord.frd_down() != Length::ZERO {
-            return None;
-        }
-
+impl<In> Camera<In> for PinholeCamera {
+    fn trace_backward(&self, coord: SensorCoordinate<In>) -> RayBearing<In> {
         // Trace a ray from the physical pixel location through the focal point.
         // This approach uses the pinhole camera model.
-        let ray_in_frd: Coordinate<CameraFrd> = coord
-            + Vector::<CameraFrd>::builder()
-                .frd_front(Length::ZERO)
-                .frd_right(Length::ZERO)
-                .frd_down(self.lens.focal_length)
-                .build();
+        // let ray_in_frd: Coordinate<CameraFrd> = coord
+        //     + Vector::<CameraFrd>::builder()
+        //         .frd_front(Length::ZERO)
+        //         .frd_right(Length::ZERO)
+        //         .frd_down(self.lens.focal_length)
+        //         .build();
 
-        // Since we are mapping the FRD's zero to the ENU orientation, the down
-        // vector will match the ENU up vector.
-        // SAFETY: The CameraFrd system only differs from the CameraEnu system
-        // by its rotation *not* any translation.
-        let camera_frd_to_enu = unsafe { self.ort.map_as_zero_in::<CameraFrd>() }.inverse();
-        let ray_in_enu = camera_frd_to_enu.transform(ray_in_frd);
-
-        Some(
-            ray_in_enu
-                .bearing_from_origin()
-                // Enforced by check that point.z() == Length::ZERO.
-                .expect("ray_in_enu should never be colocated with CameraEnu's origin"),
-        )
+        // TODO: Implement
+        RayBearing::new()
     }
 
-    /// Trace a sky point from the ENU frame into the body frame and through the
-    /// lens.
-    pub fn trace_from_sky(&self, bearing: Bearing<CameraEnu>) -> Option<Coordinate<CameraFrd>> {
-        // Bearing should be above the horizon.
-        if bearing.elevation() < Angle::ZERO {
-            return None;
-        }
+    fn trace_forward(&self, bearing: RayBearing<In>) -> SensorCoordinate<In> {
+        // let len = -self.lens.focal_length / bearing_frd.elevation().tan();
+        // Some(
+        //     coordinate! { f = len * bearing_frd.azimuth().cos(), r = len * bearing_frd.azimuth().sin(), d = Length::ZERO },
+        // )
 
-        // Since we are mapping the FRD's zero to the ENU orientation, the down
-        // vector will match the ENU up vector.
-        // SAFETY: The CameraFrd system only differs from the CameraEnu system
-        // by rotation *not* translation.
-        let camera_enu_to_frd = unsafe { self.ort.map_as_zero_in::<CameraFrd>() };
-        let bearing_frd = camera_enu_to_frd.transform(bearing);
-
-        // Project the bearing onto the sensor plane.
-        // Bearing in FRD has azimuth taken CCW from X (forward) when looking
-        // up from positive Z (down) and elevation is positive toward negative Z.
-        // See: https://docs.rs/sguaba/latest/sguaba/systems/trait.BearingDefined.html
-        let len = -self.lens.focal_length / bearing_frd.elevation().tan();
-        Some(
-            coordinate! { f = len * bearing_frd.azimuth().cos(), r = len * bearing_frd.azimuth().sin(), d = Length::ZERO },
-        )
+        // TODO: Implement
+        SensorCoordinate::new()
     }
+}
+
+pub struct Simulation<Cam, CamIn, In> {
+    camera: Cam,
+    transform: RigidBodyTransform<CamIn, In>,
 }
 
 #[cfg(test)]
