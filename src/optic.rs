@@ -5,12 +5,29 @@ use nalgebra::Vector2;
 use serde::{Deserialize, Serialize};
 use sguaba::{
     Bearing, Coordinate, Vector, coordinate, engineering::Orientation, math::RigidBodyTransform,
+    system, systems::XyzComponents,
 };
 use uom::{
     ConstZero,
-    si::{f64::*, ratio::ratio},
+    num_traits::Pow,
+    si::{
+        f64::*,
+        length::{meter, micron},
+        ratio::ratio,
+    },
 };
 
+/// ```text
+///
+///                      Y
+///                       ↑
+///                       │
+///                       │
+///                       │
+///                       │
+///                       ●───────→ X
+///                 Optical Center
+/// ```
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct SensorCoordinate {
@@ -24,11 +41,11 @@ impl SensorCoordinate {
     }
 
     pub fn x(&self) -> Length {
-        todo!()
+        self.x
     }
 
     pub fn y(&self) -> Length {
-        todo!()
+        self.y
     }
 }
 
@@ -136,24 +153,78 @@ impl ImageSensor {
     }
 }
 
+/// A [`RayBearing`] represents the direction of a ray of light with an azimuth and an elevation
+/// angle.
+///
+/// The coordinate system used by [`RayBearing`] is left-handed.
+///
+/// # Azimuth
+///
+/// Azimuth is relative to the camera's x-axis:
+/// ```text
+///
+///                      Y
+///                       ↑
+///                   Z   │
+///            Azimuth ↺  │
+///                     \ │
+///                      \│
+///                       ●────→ X
+///                 Optical Center
+/// ```
+///
+/// # Elevation
+///
+/// Elevation is relative to the XY plane.
+///
+/// Elevation here is +90°:
+/// ```text
+///                      Y
+///                       ↑
+///                   Z   │
+///                   \\  │
+///                    \\ │
+///                     \\│
+///                       ●────→ X
+///                 Optical Center
+///
+/// ```
+///
+/// Elevation here is +45°:
+/// ```text
+///                      Y
+///                       ↑
+///                   Z   │   
+///                    \  │  /
+///                     \ │ /
+///                      \│/
+///                       ●────→ X
+///                 Optical Center
+///
+/// ```
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct RayBearing {
-    // TODO: This needs to hold actual data.
-    // TODO: RayBearing should always be above the horizon.
+    azimuth: Angle,
+    elevation: Angle,
 }
 
 impl RayBearing {
-    pub fn new() -> Self {
-        Self {}
+    pub fn from_angles(azimuth: Angle, elevation: Angle) -> Option<Self> {
+        let elevation_range = Angle::ZERO..=Angle::HALF_TURN / 2.0;
+        if elevation_range.contains(&elevation) {
+            Some(Self { azimuth, elevation })
+        } else {
+            None
+        }
     }
 
-    pub(crate) fn azimuth(&self) -> _ {
-        todo!()
+    pub(crate) fn azimuth(&self) -> Angle {
+        self.azimuth
     }
 
-    pub(crate) fn elevation(&self) -> _ {
-        todo!()
+    pub(crate) fn elevation(&self) -> Angle {
+        self.elevation
     }
 }
 
@@ -180,27 +251,21 @@ impl PinholeOptic {
 
 impl Optic for PinholeOptic {
     fn trace_backward(&self, coord: SensorCoordinate) -> RayBearing {
-        // Trace a ray from the physical pixel location through the focal point.
-        // This approach uses the pinhole camera model.
-        // let ray_in_frd: Coordinate<CameraFrd> = coord
-        //     + Vector::<CameraFrd>::builder()
-        //         .frd_front(Length::ZERO)
-        //         .frd_right(Length::ZERO)
-        //         .frd_down(self.lens.focal_length)
-        //         .build();
+        let azimuth = coord.y().atan2(coord.x());
+        let ray_length_xy = Length::new::<meter>(
+            (coord.x().get::<meter>().powf(2.0) + coord.y().get::<meter>().powf(2.0)).sqrt(),
+        );
+        let elevation = self.focal_length.atan2(ray_length_xy);
 
-        // TODO: Implement
-        todo!()
+        RayBearing::from_angles(azimuth, elevation).expect("elevation should always be in the right range since ray_xy and focal_length are always positive")
     }
 
     fn trace_forward(&self, bearing: RayBearing) -> SensorCoordinate {
-        // let len = -self.lens.focal_length / bearing_frd.elevation().tan();
-        // Some(
-        //     coordinate! { f = len * bearing_frd.azimuth().cos(), r = len * bearing_frd.azimuth().sin(), d = Length::ZERO },
-        // )
+        let ray_length_xy = self.focal_length / bearing.elevation().tan();
+        let x = ray_length_xy * bearing.azimuth().cos();
+        let y = ray_length_xy * bearing.azimuth().sin();
 
-        // TODO: Implement
-        todo!()
+        SensorCoordinate::new(x, y)
     }
 }
 

@@ -7,12 +7,12 @@ use crate::{
 use chrono::{DateTime, Utc};
 use sguaba::{
     Bearing,
-    engineering::{Orientation, Pose},
+    engineering::Pose,
     math::{RigidBodyTransform, Rotation},
     system,
-    systems::{Ecef, Wgs84},
+    systems::{BearingDefined, Ecef},
 };
-use uom::si::f64::Length;
+use uom::si::f64::Angle;
 
 system!(struct SimulationEnu using ENU);
 system!(struct CameraXyz using right-handed XYZ);
@@ -28,7 +28,7 @@ impl<O> Simulation<O> {
         // SAFETY: The origin of SimulationEnu is coincident with the camera's position.
         let model = unsafe { SkyModel::from_position_and_time(camera_pose.position(), time) };
         let camera_pose =
-            unsafe { RigidBodyTransform::ecef_to_enu_at(camera_pose.position().into()) }
+            unsafe { RigidBodyTransform::ecef_to_enu_at(&camera_pose.position().into()) }
                 .transform(camera_pose);
         Self {
             camera,
@@ -41,37 +41,30 @@ impl<O> Simulation<O> {
     where
         O: Optic,
     {
-        // convert pixel to sensor coordinate
-        // let ray_bearing = self.camera.trace_backward(pixel);
-
-        // let bearing = Bearing::builder().azimuth(pixel_bearing.azimuth()).elevation(pixel_bearing.elevation())
-        //
-        // Ray::new(self.model.aop(pixel_bearing), self.model.dop(pixel_bearing))
-        // let rays: Vec<Ray<_>> = coords
-        //     .par_iter()
-        //     .filter_map(|coord| {
-        //         let bearing_cam_enu = camera
-        //             .trace_from_sensor(*coord)
-        //             .expect("coord on sensor plane");
-        //         let aop = sky_model.aop(bearing_cam_enu)?;
-        //         let dop = sky_model.dop(bearing_cam_enu)?;
-        //
-        //         Some(Ray::new(*coord, aop, dop))
-        //     })
-        //     .collect();
-
+        // The camera produces a bearing in a left handed coordinate system.
         let ray_bearing = self.camera.trace_from_pixel(pixel)?;
+
+        // We need to flip the z-axis to convert the handedness.
+        let polar_angle_lh = Angle::HALF_TURN / 2.0 - ray_bearing.elevation();
+        // Since cos(pi - x) = -cos(x) where x is the polar angle (cos(x) is z).
+        let polar_angle_rh = Angle::HALF_TURN - polar_angle_lh;
+        let elevation_rh = Angle::HALF_TURN / 2.0 - polar_angle_rh;
+
         let bearing_cam = Bearing::<CameraXyz>::builder()
             .azimuth(ray_bearing.azimuth())
-            .elevation(ray_bearing.elevation())
+            .elevation(elevation_rh)
             .unwrap()
             .build();
 
+        // SAFETY: The position of camera_pose lies at the origin of CameraXyz.
         let cam_to_sim: Rotation<CameraXyz, SimulationEnu> =
             unsafe { self.camera_pose.orientation().map_as_zero_in::<CameraXyz>() }.inverse();
         let bearing_sim = cam_to_sim.transform(bearing_cam);
 
-        todo!()
+        Some(Ray::new(
+            self.model.aop(bearing_sim)?,
+            self.model.dop(bearing_sim)?,
+        ))
     }
 
     pub fn ray_image(&self) -> RayImage<GlobalFrame>
@@ -87,5 +80,48 @@ impl<O> Simulation<O> {
     }
 }
 
+impl BearingDefined for CameraXyz {
+    fn bearing_to_spherical(bearing: Bearing<Self>) -> (Angle, Angle) {
+        let polar = Angle::HALF_TURN / 2.0 - bearing.elevation();
+        let azimuth = bearing.azimuth();
+        (polar, azimuth)
+    }
+
+    fn spherical_to_bearing(
+        polar: impl Into<Angle>,
+        azimuth: impl Into<Angle>,
+    ) -> Option<Bearing<Self>> {
+        let elevation = Angle::HALF_TURN / 2.0 - polar.into();
+        let azimuth = azimuth.into();
+
+        Some(
+            Bearing::builder()
+                .azimuth(azimuth)
+                .elevation(elevation)?
+                .build(),
+        )
+    }
+}
+
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use super::*;
+    use rstest::rstest;
+    use uom::ConstZero;
+
+    #[rstest]
+    #[case(Angle::HALF_TURN/2.0)]
+    #[case(Angle::HALF_TURN/4.0)]
+    fn bearing_cam_xyz_roundtrip(#[case] elevation: Angle) {
+        let bearing = Bearing::<CameraXyz>::builder()
+            .azimuth(Angle::ZERO)
+            .elevation(elevation)
+            .unwrap()
+            .build();
+
+        let (polar, azimuth) = CameraXyz::bearing_to_spherical(bearing);
+        let result = CameraXyz::spherical_to_bearing(polar, azimuth);
+
+        assert_eq!(result, Some(bearing));
+    }
+}

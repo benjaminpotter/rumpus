@@ -99,6 +99,10 @@ fn ray_image() -> RayImage<GlobalFrame> {
 fn aop_works() {
     let ray_image = ray_image();
 
+    for pixel in ray_image.pixels() {
+        assert!(pixel.is_some());
+    }
+
     let mut png_bytes: Vec<u8> = Vec::new();
     image::write_buffer_with_format(
         &mut Cursor::new(&mut png_bytes),
