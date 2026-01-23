@@ -3,7 +3,6 @@ use std::{
     io::Cursor,
     path::{Path, PathBuf},
 };
-use uom::si::{f64::Length, length::micron};
 
 fn fixture_path(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -13,8 +12,6 @@ fn fixture_path(name: &str) -> PathBuf {
 }
 
 fn ray_image<P: AsRef<Path>>(path: P) -> RayImage<SensorFrame> {
-    let pixel_size = Length::new::<micron>(3.45 * 2.);
-
     let raw_image = image::ImageReader::open(&path)
         .unwrap()
         .decode()
@@ -23,21 +20,11 @@ fn ray_image<P: AsRef<Path>>(path: P) -> RayImage<SensorFrame> {
 
     let (width, height) = raw_image.dimensions();
     let intensity_image =
-        IntensityImage::from_bytes(width as u16, height as u16, &raw_image.into_raw())
+        IntensityImage::from_bytes(width as usize, height as usize, &raw_image.into_raw())
             .expect("image dimensions are even");
 
-    let ray_image = RayImage::from_rays_with_sensor(
-        intensity_image.rays(pixel_size, pixel_size),
-        &ImageSensor::new(
-            pixel_size,
-            pixel_size,
-            intensity_image.height(),
-            intensity_image.width(),
-        ),
-    )
-    .expect("no ray hits the same pixel");
-
-    ray_image
+    let rays: Vec<_> = intensity_image.rays().map(|ray| Some(ray)).collect();
+    RayImage::from_pixels(rays, intensity_image.height(), intensity_image.width()).unwrap()
 }
 
 #[test]

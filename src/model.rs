@@ -1,9 +1,13 @@
 use crate::light::dop::Dop;
-use crate::{CameraEnu, light::aop::Aop, ray::GlobalFrame};
+use crate::{light::aop::Aop, ray::GlobalFrame};
 use chrono::prelude::*;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+use sguaba::engineering::Pose;
+use sguaba::math::RigidBodyTransform;
+use sguaba::systems::{Ecef, EnuLike};
 use sguaba::{Bearing, systems::Wgs84};
+use sguaba::{CoordinateSystem, system};
 use uom::{
     ConstZero,
     si::{angle::degree, f64::Angle, ratio::ratio},
@@ -13,30 +17,42 @@ use uom::{
 /// (`Wgs84`) position and a UTC timepoint.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct SkyModel {
+pub struct SkyModel<In> {
     /// The location of the sun's center for an observer on the ground.
-    solar_bearing: Bearing<CameraEnu>,
+    solar_bearing: Bearing<In>,
 }
 
-impl SkyModel {
+impl<In> SkyModel<In> {
     /// Create a `SkyModel` from a `solar_bearing`.
-    pub fn from_solar_bearing(solar_bearing: Bearing<CameraEnu>) -> Self {
+    pub fn from_solar_bearing(solar_bearing: Bearing<In>) -> Self {
         Self { solar_bearing }
     }
 
-    /// Create a new `SkyModel` from a `pos` and a `time`.
-    pub fn from_wgs84_and_time(pos: Wgs84, time: DateTime<Utc>) -> Self {
+    /// Create a new [`SkyModel`] from a position and a time.
+    ///
+    /// # Safety
+    /// This function only produces a valid [`SkyModel`] if the origin of `In` is coincident with
+    /// `position`. Otherwise, the model will interpret the solar bearing from `position`, but
+    /// return results that interpret bearings from the origin of `In`.
+    pub unsafe fn from_position_and_time(
+        position: impl Into<Wgs84>,
+        time: impl Into<DateTime<Utc>>,
+    ) -> Self
+    where
+        In: CoordinateSystem<Convention = EnuLike>,
+    {
         // Given a lon, lat, and time, compute the solar azimuth and zenith angle.
+        let position = position.into();
         let solar_pos = spa::solar_position::<spa::StdFloatOps>(
-            time,
-            pos.latitude().get::<degree>(),
-            pos.longitude().get::<degree>(),
+            time.into(),
+            position.latitude().get::<degree>(),
+            position.longitude().get::<degree>(),
         )
         // Using `Wgs84` should enforce this.
         .expect("latitude and longitude are valid");
 
         Self::from_solar_bearing(
-            Bearing::<CameraEnu>::builder()
+            Bearing::<In>::builder()
                 .azimuth(Angle::new::<degree>(solar_pos.azimuth))
                 // Convert the zenith angle into an elevation angle.
                 // The elevation is taken from the XY plane towards positive Z.
@@ -46,16 +62,16 @@ impl SkyModel {
         )
     }
 
-    /// Returns the `Bearing<CameraEnu>` towards the sun.
-    pub fn solar_bearing(&self) -> Bearing<CameraEnu> {
+    /// Returns the [`Bearing`] towards the sun.
+    pub fn solar_bearing(&self) -> Bearing<In> {
         self.solar_bearing
     }
 
-    /// Use the `SkyModel` to compute an `Aop` in the `GlobalFrame` at `bearing`.
+    /// Use the [`SkyModel`] to compute an [`Aop`] in the [`GlobalFrame`] at `bearing`.
     ///
     /// Returns `None` if `bearing` is below the horizon ie it has elevation
     /// less than zero.
-    pub fn aop(&self, bearing: Bearing<CameraEnu>) -> Option<Aop<GlobalFrame>> {
+    pub fn aop(&self, bearing: Bearing<In>) -> Option<Aop<GlobalFrame>> {
         if bearing.elevation() < Angle::ZERO {
             return None;
         }
@@ -75,7 +91,7 @@ impl SkyModel {
     ///
     /// Returns `None` if `bearing` is below the horizon ie it has elevation
     /// less than zero.
-    pub fn dop(&self, bearing: Bearing<CameraEnu>) -> Option<Dop> {
+    pub fn dop(&self, bearing: Bearing<In>) -> Option<Dop> {
         if bearing.elevation() < Angle::ZERO {
             return None;
         }
@@ -102,6 +118,8 @@ mod tests {
     use quickcheck::quickcheck;
     use uom::si::angle::degree;
 
+    system!(struct ModelEnu using ENU);
+
     quickcheck! {
         fn solar_meridian_ortho_aop(flip_azimuth: bool, elevation_seed: u8) -> bool {
             let elevation = Angle::new::<degree>(elevation_seed as f64 * 90. / u8::MAX as f64);
@@ -112,14 +130,14 @@ mod tests {
 
             relative_eq!(
                 SkyModel::from_solar_bearing(
-                    Bearing::<CameraEnu>::builder()
+                    Bearing::<ModelEnu>::builder()
                         .azimuth(Angle::new::<degree>(0.0))
                         .elevation(Angle::new::<degree>(45.0))
                         .expect("solar elevation should be on the range -90 to 90")
                         .build(),
                 )
                 .aop(
-                    Bearing::<CameraEnu>::builder()
+                    Bearing::<ModelEnu>::builder()
                         .azimuth(azimuth)
                         .elevation(elevation)
                         .expect("elevation should be on the range -90 to 90")

@@ -2,7 +2,7 @@ use std::fmt;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Error {
-    OddImgDim((u16, u16)),
+    OddImgDim((usize, usize)),
     EmptyRange,
     NonFinite,
 }

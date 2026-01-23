@@ -1,5 +1,4 @@
 use crate::{
-    CameraFrd,
     error::Error,
     iter::RayIterator,
     light::stokes::StokesVec,
@@ -10,23 +9,24 @@ use sguaba::Coordinate;
 use thiserror::Error;
 use uom::{
     ConstZero,
-    si::{angle::degree, f64::Length, length::micron, ratio::ratio},
+    si::{angle::degree, f64::Length, ratio::ratio},
 };
 
 #[derive(Debug, Error)]
 pub enum ImageError {
-    #[error("multiple rays map to one pixel: row = {row}, col = {col}")]
-    AmbiguousRay { row: usize, col: usize },
-
-    #[error("ray location is out of bounds: ({} um, {} um) ", coord.frd_front().get::<micron>(), coord.frd_right().get::<micron>())]
-    OutOfBoundsRay { coord: Coordinate<CameraFrd> },
-
     #[error("length of data does not match size of extents: expected {} found {len}", rows * cols)]
     SizeMismatch {
         rows: usize,
         cols: usize,
         len: usize,
     },
+
+    #[error(
+        "intensity image reader requires even numbered image dimensions: found {}x{}",
+        width,
+        height
+    )]
+    InvalidDimensions { width: usize, height: usize },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -92,8 +92,6 @@ impl<T> Matrix<T> {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct IntensityPixel {
-    row: u16,
-    col: u16,
     /// A metapixel is a group of four intensity pixels that have two sets of orthogonal linear polarizing filters.
     /// Each element in this buffer stores an intensity value in 0, 45, 90, 135 order.
     inner: [f64; 4],
@@ -124,8 +122,8 @@ impl IntensityPixel {
 pub struct IntensityImage {
     /// Buffer of metapixels.
     metapixels: Vec<IntensityPixel>,
-    width: u16,
-    height: u16,
+    width: usize,
+    height: usize,
 }
 
 impl IntensityImage {
@@ -160,15 +158,15 @@ impl IntensityImage {
     /// +--------+
     /// | w(h-1) |
     /// ```
-    pub fn from_bytes(width: u16, height: u16, bytes: &[u8]) -> Result<Self, Error> {
+    pub fn from_bytes(width: usize, height: usize, bytes: &[u8]) -> Result<Self, ImageError> {
         let meta_width = width
             .checked_div(2)
-            .ok_or(Error::OddImgDim((width, height)))?;
+            .ok_or(ImageError::InvalidDimensions { width, height })?;
         let meta_height = height
             .checked_div(2)
-            .ok_or(Error::OddImgDim((width, height)))?;
+            .ok_or(ImageError::InvalidDimensions { width, height })?;
 
-        let coords: Vec<(u16, u16)> = (0..meta_height)
+        let coords: Vec<(usize, usize)> = (0..meta_height)
             .flat_map(|y| (0..meta_width).map(move |x| (x, y)))
             .collect();
 
@@ -182,8 +180,6 @@ impl IntensityImage {
 
                 // FIXME: Catch problems with the size of `bytes`.
                 IntensityPixel {
-                    row: y,
-                    col: x,
                     inner: [
                         bytes[i000] as f64,
                         bytes[i045] as f64,
@@ -201,19 +197,17 @@ impl IntensityImage {
         })
     }
 
-    pub fn width(&self) -> u16 {
+    pub fn width(&self) -> usize {
         self.width
     }
 
-    pub fn height(&self) -> u16 {
+    pub fn height(&self) -> usize {
         self.height
     }
 
-    pub fn rays<'a>(&'a self, pixel_width: Length, pixel_height: Length) -> Rays<'a> {
+    pub fn rays<'a>(&'a self) -> Rays<'a> {
         Rays {
             inner: self.metapixels.iter(),
-            // Constructs a `ImageSensor` using the dimensions of the `IntensityImage`.
-            sensor: ImageSensor::new(pixel_width, pixel_height, self.height, self.width),
         }
     }
 }
@@ -222,93 +216,18 @@ impl IntensityImage {
 #[derive(Clone, Debug)]
 pub struct Rays<'a> {
     inner: std::slice::Iter<'a, IntensityPixel>,
-    sensor: ImageSensor,
 }
 
 impl<'a> Iterator for Rays<'a> {
     type Item = Ray<SensorFrame>;
     fn next(&mut self) -> Option<Self::Item> {
         let px = self.inner.next()?;
-        Some(Ray::from_stokes(
-            self.sensor
-                .at_pixel(px.row, px.col)
-                // This iterator is created with a ImageSensor that matches the
-                // parent IntensityImage which guarantees that all pixel
-                // locations are inside the ImageSensor bounds.
-                .expect("sensor dimensions should match image dimensions"),
-            px.stokes(),
-        ))
+        Some(Ray::from_stokes(px.stokes()))
     }
 }
 
 // All of RayIterator's functions are defined using Iterator.
 impl<'a> RayIterator<SensorFrame> for Rays<'a> {}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct ImageSensor {
-    pixel_width: Length,
-    pixel_height: Length,
-    rows: usize,
-    cols: usize,
-}
-
-impl ImageSensor {
-    pub fn new(pixel_width: Length, pixel_height: Length, rows: u16, cols: u16) -> Self {
-        Self {
-            pixel_width,
-            pixel_height,
-            rows: rows as usize,
-            cols: cols as usize,
-        }
-    }
-
-    pub fn pixel_count(&self) -> usize {
-        self.cols * self.rows
-    }
-
-    pub fn rows(&self) -> usize {
-        self.rows
-    }
-
-    pub fn cols(&self) -> usize {
-        self.cols
-    }
-
-    pub fn at_coord(&self, coord: Coordinate<CameraFrd>) -> Option<(u16, u16)> {
-        let row = ((coord.frd_right() / self.pixel_height).get::<ratio>()
-            + self.rows.checked_sub(1)? as f64 / 2.0)
-            .round() as usize;
-        let col = ((coord.frd_front() / self.pixel_width).get::<ratio>()
-            + self.cols.checked_sub(1)? as f64 / 2.0)
-            .round() as usize;
-
-        if (0..self.rows).contains(&row) && (0..self.cols).contains(&col) {
-            return Some((row as u16, col as u16));
-        }
-
-        None
-    }
-
-    /// Computes a `Coordinate` in `CameraFrd` from a pixel location.
-    ///
-    /// `row` maps to the FRD right direction.
-    /// `col` maps to the FRD front direction.
-    /// Returns `None` if the `row` and `col` are out of bounds.
-    pub fn at_pixel(&self, row: u16, col: u16) -> Option<Coordinate<CameraFrd>> {
-        if row as usize > self.rows || col as usize > self.cols {
-            return None;
-        }
-
-        Some(
-            Coordinate::<CameraFrd>::builder()
-                .frd_front(self.pixel_width * (col as f64 - (self.cols - 1) as f64 / 2.0))
-                .frd_right(self.pixel_height * (row as f64 - (self.rows - 1) as f64 / 2.0))
-                .frd_down(Length::ZERO)
-                .build(),
-        )
-    }
-}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct RayImage<Frame: RayFrame> {
@@ -330,30 +249,6 @@ impl<Frame: RayFrame> RayImage<Frame> {
         cols: usize,
     ) -> Result<Self, ImageError> {
         let matrix = Matrix::from_elements(pixels, rows, cols)?;
-        Ok(Self::from_matrix(matrix))
-    }
-
-    pub fn from_rays_with_sensor<I>(rays: I, sensor: &ImageSensor) -> Result<Self, ImageError>
-    where
-        I: IntoIterator<Item = Ray<Frame>>,
-    {
-        let pixels = vec![None; sensor.pixel_count()];
-        let mut matrix = Matrix::from_elements(pixels, sensor.rows(), sensor.cols())?;
-
-        for ray in rays {
-            let coord = ray.coord();
-            if let Some((row, col)) = sensor.at_coord(*coord) {
-                let row = row as usize;
-                let col = col as usize;
-
-                if matrix.get_mut(row, col).replace(ray).is_some() {
-                    return Err(ImageError::AmbiguousRay { row, col });
-                }
-            } else {
-                return Err(ImageError::OutOfBoundsRay { coord: *coord });
-            }
-        }
-
         Ok(Self::from_matrix(matrix))
     }
 
@@ -454,35 +349,5 @@ impl ColorMap for Jet {
         .unwrap();
 
         [r, g, b]
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use rstest::rstest;
-    use uom::si::length::micron;
-
-    #[rstest]
-    #[case(0, 0)]
-    #[case(512, 612)]
-    #[case(106, 0)]
-    #[case(0, 292)]
-    fn pixel_to_coord_roundtrip(#[case] row: u16, #[case] col: u16) {
-        const ROWS: u16 = 1024;
-        const COLS: u16 = 1224;
-        const PIXEL_SIZE_UM: f64 = 3.45 * 2.;
-
-        let sensor = ImageSensor::new(
-            Length::new::<micron>(PIXEL_SIZE_UM),
-            Length::new::<micron>(PIXEL_SIZE_UM),
-            ROWS,
-            COLS,
-        );
-
-        let coord = sensor.at_pixel(row, col).expect("pixel is on sensor");
-        let pixel = sensor.at_coord(coord).expect("coord is on sensor");
-
-        assert_eq!(pixel, (row, col));
     }
 }
