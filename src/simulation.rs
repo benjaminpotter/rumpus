@@ -41,20 +41,10 @@ impl<O> Simulation<O> {
     where
         O: Optic,
     {
-        // The camera produces a bearing in a left handed coordinate system.
         let ray_bearing = self.camera.trace_from_pixel(pixel)?;
 
-        // We need to flip the z-axis to convert the handedness.
-        let polar_angle_lh = Angle::HALF_TURN / 2.0 - ray_bearing.elevation();
-        // Since cos(pi - x) = -cos(x) where x is the polar angle (cos(x) is z).
-        let polar_angle_rh = Angle::HALF_TURN - polar_angle_lh;
-        let elevation_rh = Angle::HALF_TURN / 2.0 - polar_angle_rh;
-
-        let bearing_cam = Bearing::<CameraXyz>::builder()
-            .azimuth(ray_bearing.azimuth())
-            .elevation(elevation_rh)
-            .unwrap()
-            .build();
+        let bearing_cam =
+            CameraXyz::spherical_to_bearing(ray_bearing.polar(), ray_bearing.azimuth()).unwrap();
 
         // SAFETY: The position of camera_pose lies at the origin of CameraXyz.
         let cam_to_sim: Rotation<CameraXyz, SimulationEnu> =

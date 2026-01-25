@@ -153,10 +153,7 @@ impl ImageSensor {
     }
 }
 
-/// A [`RayBearing`] represents the direction of a ray of light with an azimuth and an elevation
-/// angle.
-///
-/// The coordinate system used by [`RayBearing`] is left-handed.
+/// A [`RayDirection`] represents the direction of a ray of light.
 ///
 /// # Azimuth
 ///
@@ -165,7 +162,7 @@ impl ImageSensor {
 ///
 ///                      Y
 ///                       ↑
-///                   Z   │
+///                  -Z   │
 ///            Azimuth ↺  │
 ///                     \ │
 ///                      \│
@@ -173,64 +170,34 @@ impl ImageSensor {
 ///                 Optical Center
 /// ```
 ///
-/// # Elevation
+/// # Polar
 ///
-/// Elevation is relative to the XY plane.
-///
-/// Elevation here is +90°:
-/// ```text
-///                      Y
-///                       ↑
-///                   Z   │
-///                   \\  │
-///                    \\ │
-///                     \\│
-///                       ●────→ X
-///                 Optical Center
-///
-/// ```
-///
-/// Elevation here is +45°:
-/// ```text
-///                      Y
-///                       ↑
-///                   Z   │   
-///                    \  │  /
-///                     \ │ /
-///                      \│/
-///                       ●────→ X
-///                 Optical Center
-///
+/// Polar is relative to the +Z axis.
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct RayBearing {
+pub struct RayDirection {
+    polar: Angle,
     azimuth: Angle,
-    elevation: Angle,
 }
 
-impl RayBearing {
-    pub fn from_angles(azimuth: Angle, elevation: Angle) -> Option<Self> {
-        let elevation_range = Angle::ZERO..=Angle::HALF_TURN / 2.0;
-        if elevation_range.contains(&elevation) {
-            Some(Self { azimuth, elevation })
-        } else {
-            None
-        }
+impl RayDirection {
+    pub fn from_angles(polar: Angle, azimuth: Angle) -> Self {
+        Self { polar, azimuth }
     }
 
-    pub(crate) fn azimuth(&self) -> Angle {
+    pub fn polar(&self) -> Angle {
+        self.polar
+    }
+
+    pub fn azimuth(&self) -> Angle {
         self.azimuth
-    }
-
-    pub(crate) fn elevation(&self) -> Angle {
-        self.elevation
     }
 }
 
 pub trait Optic {
-    fn trace_backward(&self, coord: SensorCoordinate) -> RayBearing;
-    fn trace_forward(&self, bearing: RayBearing) -> SensorCoordinate;
+    fn trace_backward(&self, coord: &SensorCoordinate) -> RayDirection;
+    fn trace_forward(&self, bearing: &RayDirection) -> SensorCoordinate;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -250,18 +217,18 @@ impl PinholeOptic {
 }
 
 impl Optic for PinholeOptic {
-    fn trace_backward(&self, coord: SensorCoordinate) -> RayBearing {
+    fn trace_backward(&self, coord: &SensorCoordinate) -> RayDirection {
         let azimuth = coord.y().atan2(coord.x());
         let ray_length_xy = Length::new::<meter>(
             (coord.x().get::<meter>().powf(2.0) + coord.y().get::<meter>().powf(2.0)).sqrt(),
         );
-        let elevation = self.focal_length.atan2(ray_length_xy);
+        let polar = ray_length_xy.atan2(-self.focal_length);
 
-        RayBearing::from_angles(azimuth, elevation).expect("elevation should always be in the right range since ray_xy and focal_length are always positive")
+        RayDirection::from_angles(polar, azimuth)
     }
 
-    fn trace_forward(&self, bearing: RayBearing) -> SensorCoordinate {
-        let ray_length_xy = self.focal_length / bearing.elevation().tan();
+    fn trace_forward(&self, bearing: &RayDirection) -> SensorCoordinate {
+        let ray_length_xy = -self.focal_length * bearing.polar().tan();
         let x = ray_length_xy * bearing.azimuth().cos();
         let y = ray_length_xy * bearing.azimuth().sin();
 
@@ -286,17 +253,17 @@ impl<O> Camera<O> {
         self.sensor.pixels()
     }
 
-    pub fn trace_from_pixel(&self, pixel: impl AsRef<PixelCoordinate>) -> Option<RayBearing>
+    pub fn trace_from_pixel(&self, pixel: impl AsRef<PixelCoordinate>) -> Option<RayDirection>
     where
         O: Optic,
     {
         Some(
             self.optic
-                .trace_backward(self.sensor.sensor_from_pixel(pixel)?),
+                .trace_backward(self.sensor.sensor_from_pixel(&pixel).as_ref()?),
         )
     }
 
-    pub fn trace_from_bearing(&self, bearing: impl AsRef<RayBearing>) -> PixelCoordinate {
+    pub fn trace_from_bearing(&self, bearing: impl AsRef<RayDirection>) -> PixelCoordinate {
         todo!()
     }
 
@@ -345,13 +312,31 @@ mod tests {
             let focal_length = Length::new::<millimeter>(8.0);
             let cam = PinholeOptic::from_focal_length(focal_length);
 
-            let result = cam.trace_forward(cam.trace_backward(px.clone()));
+            let result = cam.trace_forward(&cam.trace_backward(&px));
 
             // FIXME: Why doesn't this want to work??
             // relative_eq!(px, result)
 
             px.abs_diff_eq(&result, f64::EPSILON)
         }
+    }
+
+    #[test]
+    fn pinhole_0_1() {
+        let x_seed = 0;
+        let y_seed = 1;
+        let x = Length::new::<micron>(x_seed as f64 * 5000. / i16::MAX as f64);
+        let y = Length::new::<micron>(y_seed as f64 * 5000. / i16::MAX as f64);
+        let px = SensorCoordinate::new(x, y);
+        let focal_length = Length::new::<millimeter>(8.0);
+        let cam = PinholeOptic::from_focal_length(focal_length);
+
+        let result = cam.trace_forward(&cam.trace_backward(&px));
+
+        println!("{:#?}", px);
+        println!("{:#?}", result);
+
+        assert!(px.abs_diff_eq(&result, f64::EPSILON));
     }
 
     #[rstest]

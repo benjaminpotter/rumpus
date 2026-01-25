@@ -73,7 +73,8 @@ fn ray_image() -> RayImage<GlobalFrame> {
         Orientation::<CameraEnu>::tait_bryan_builder()
             .yaw(Angle::new::<degree>(0.0))
             .pitch(Angle::new::<degree>(0.0))
-            .roll(Angle::new::<degree>(0.0))
+            // .pitch(Angle::new::<degree>(180.0))
+            .roll(Angle::new::<degree>(180.0))
             .build(),
     );
 
