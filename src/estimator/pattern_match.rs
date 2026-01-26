@@ -1,17 +1,10 @@
 use crate::{
     estimator::Estimator,
     iter::RayIterator,
-    light::dop::Dop,
-    model::SkyModel,
     optic::Camera,
-    ray::{Ray, SensorFrame},
+    ray::SensorFrame,
 };
-use rayon::prelude::*;
-use sguaba::{Bearing, engineering::Orientation, systems::Ecef};
-use uom::{
-    ConstZero,
-    si::{angle::radian, f64::Angle},
-};
+use sguaba::{engineering::Orientation, systems::Ecef};
 
 pub struct PatternMatch<Optic, S> {
     camera: Camera<Optic>,

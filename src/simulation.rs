@@ -12,7 +12,7 @@ use sguaba::{
     system,
     systems::{BearingDefined, Ecef},
 };
-use uom::{ConstZero, si::f64::Angle};
+use uom::si::f64::Angle;
 
 system!(struct SimulationEnu using ENU);
 system!(struct CameraXyz using right-handed XYZ);

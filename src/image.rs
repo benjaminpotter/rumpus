@@ -1,16 +1,11 @@
 use crate::{
-    error::Error,
     iter::RayIterator,
     light::stokes::StokesVec,
     ray::{Ray, RayFrame, SensorFrame},
 };
 use rayon::prelude::*;
-use sguaba::Coordinate;
 use thiserror::Error;
-use uom::{
-    ConstZero,
-    si::{angle::degree, f64::Length, ratio::ratio},
-};
+use uom::si::angle::degree;
 
 #[derive(Debug, Error)]
 pub enum ImageError {
