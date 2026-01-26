@@ -54,34 +54,8 @@ impl<T> Matrix<T> {
         self.elements.iter()
     }
 
-    fn into_iter(self) -> impl Iterator<Item = T> {
-        self.elements.into_iter()
-    }
-
     fn cells(&self) -> Cells<'_, T> {
         Cells::new(&self.elements, self.rows, self.cols)
-    }
-
-    fn map_by<U>(&self, map: impl Fn(&T) -> U) -> Matrix<U> {
-        let elements: Vec<_> = self.iter().map(|elem| map(elem)).collect();
-        Matrix::from_elements(elements, self.rows, self.cols)
-            // This is fine as long as the type continues to maintain the invariant that the length
-            // of the elements list matches the size of the extents.
-            .expect("len of elements matches extents")
-    }
-
-    fn index(&self, row: usize, col: usize) -> usize {
-        row * self.cols + col
-    }
-
-    fn get(&self, row: usize, col: usize) -> &T {
-        let index = self.index(row, col);
-        &self.elements[index]
-    }
-
-    fn get_mut(&mut self, row: usize, col: usize) -> &mut T {
-        let index = self.index(row, col);
-        &mut self.elements[index]
     }
 
     fn rows(&self) -> usize {

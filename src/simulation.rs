@@ -5,6 +5,7 @@ use crate::{
     ray::{GlobalFrame, Ray},
 };
 use chrono::{DateTime, Utc};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use sguaba::{
     Bearing,
     engineering::Pose,
@@ -14,9 +15,22 @@ use sguaba::{
 };
 use uom::si::f64::Angle;
 
+// Global frame of the simulation.
+// Axes are aligned with east, north, and up.
+// Orientation of the camera is defined in this frame.
 system!(struct SimulationEnu using ENU);
+
+// Body frame of the camera.
+// X points towards the right of the image.
+// Y points towards the top of the image.
+// Z points towards the viewer (away from the sky).
 system!(struct CameraXyz using right-handed XYZ);
 
+/// This type describes a [`Camera`] with a [`Pose`] viewing a [`SkyModel`].
+/// It is responsible for mapping [`PixelCoordinate`]s from the [`Camera`] onto [`Ray`]s from
+/// incident skylight.
+/// [`Ray`]s encode the polarization state (i.e., the angle and degree of polarization) for
+/// different regions of the sky.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Simulation<O> {
@@ -26,6 +40,12 @@ pub struct Simulation<O> {
 }
 
 impl<O> Simulation<O> {
+    /// Construct a simulation from a [`Camera`] with a [`Pose`] in [`Ecef`] and at a
+    /// [`DateTime<Utc>`].
+    ///
+    /// The time is used to construct a [`SkyModel`] which requires knowing the position of the sun
+    /// in the sky.
+    /// This is determined with the time provided and the position of the camera taken from its pose.
     pub fn new(camera: Camera<O>, camera_pose: Pose<Ecef>, time: DateTime<Utc>) -> Self {
         // SAFETY: The origin of SimulationEnu is coincident with the camera's position.
         let model = unsafe { SkyModel::from_position_and_time(camera_pose.position(), time) };
@@ -43,9 +63,11 @@ impl<O> Simulation<O> {
     where
         O: Optic,
     {
-        let ray_bearing = self.camera.trace_from_pixel(pixel)?;
+        // Defined in the body frame of the camera.
+        let ray_direction = self.camera.trace_from_pixel(pixel)?;
         let bearing_cam =
-            CameraXyz::spherical_to_bearing(ray_bearing.polar(), ray_bearing.azimuth()).unwrap();
+            CameraXyz::spherical_to_bearing(ray_direction.polar(), ray_direction.azimuth())
+                .unwrap();
 
         // SAFETY: The position of camera_pose lies at the origin of CameraXyz.
         let cam_to_sim: Rotation<CameraXyz, SimulationEnu> =
@@ -69,8 +91,20 @@ impl<O> Simulation<O> {
         )
         .unwrap()
     }
+
+    pub fn par_ray_image(&self) -> RayImage<GlobalFrame>
+    where
+        O: Optic + Send + Sync,
+    {
+        let pixels: Vec<_> = self.camera.pixels().collect();
+        let rays: Vec<_> = pixels.into_par_iter().map(|px| self.ray(px)).collect();
+        RayImage::from_rays(rays, self.camera.rows(), self.camera.cols()).unwrap()
+    }
 }
 
+// Used to convert from the polar angle convention to the elevation angle convention.
+// The elevation angle is taken from the horizontal plane positive towards Z.
+// Bearings from the camera should have a negative elevation angle.
 impl BearingDefined for CameraXyz {
     fn bearing_to_spherical(bearing: Bearing<Self>) -> (Angle, Angle) {
         let polar = Angle::HALF_TURN / 2.0 - bearing.elevation();

@@ -5,6 +5,14 @@ use uom::{
     si::{f64::*, length::meter, ratio::ratio},
 };
 
+/// Describes a 2d coordinate on an image sensor.
+/// Coodinates are taken with reference to the [`SensorCoordinate::optical_center`] of the sensor.
+/// This description of a coordinate does not have knowledge of the dimensions or pixel size of a
+/// physical image sensor.
+/// It is used when tracing [`RayDirection`]s through an [`Optic`].
+/// See [`ImageSensor`] and [`PixelCoordinate`] for types that enforce physical constaints on the
+/// coordinates.
+///
 /// ```text
 ///
 ///                      Y
@@ -28,6 +36,13 @@ impl SensorCoordinate {
         Self { x, y }
     }
 
+    pub fn optical_center() -> Self {
+        Self {
+            x: Length::ZERO,
+            y: Length::ZERO,
+        }
+    }
+
     pub fn x(&self) -> Length {
         self.x
     }
@@ -43,6 +58,11 @@ impl AsRef<SensorCoordinate> for SensorCoordinate {
     }
 }
 
+/// Describes the 2d coordinate of a pixel in an image as a row and a column.
+/// The pixel coordinate follows the convention for images with the first row and column at the top
+/// and left edges of the image, respectively.
+/// For a more abstract, floating point representation of a pixel coordinate see
+/// [`SensorCoordinate`].
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PixelCoordinate {
@@ -70,6 +90,8 @@ impl AsRef<PixelCoordinate> for PixelCoordinate {
     }
 }
 
+/// Describes an image sensor including its physical dimensions and pixel size.
+/// This type allows conversion between a [`SensorCoordinate`] and a [`PixelCoordinate`].
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ImageSensor {
@@ -141,11 +163,14 @@ impl ImageSensor {
     }
 }
 
-/// A [`RayDirection`] represents the direction of a ray of light.
+/// A [`RayDirection`] represents the direction of a ray of light using spherical conventions.
+/// This type is used by [`Optic`]s to trace a [`SensorCoordinate`] through an optical system.
 ///
-/// # Azimuth
+/// ## Azimuth
 ///
-/// Azimuth is relative to the camera's x-axis:
+/// Azimuth is relative to the [`SensorCoordinate`]'s positive X axis:
+/// Rotations are right-handed i.e., they are counterclockwise about the positive Z axis.
+///
 /// ```text
 ///
 ///                      Y
@@ -158,10 +183,9 @@ impl ImageSensor {
 ///                 Optical Center
 /// ```
 ///
-/// # Polar
+/// ## Polar
 ///
-/// Polar is relative to the +Z axis.
-/// ```
+/// Polar is relative to the positive Z axis.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct RayDirection {
@@ -255,8 +279,14 @@ impl<O> Camera<O> {
         )
     }
 
-    pub fn trace_from_bearing(&self, bearing: impl AsRef<RayDirection>) -> PixelCoordinate {
-        todo!()
+    pub fn trace_from_bearing(&self, bearing: impl AsRef<RayDirection>) -> Option<PixelCoordinate>
+    where
+        O: Optic,
+    {
+        Some(
+            self.sensor
+                .pixel_from_sensor(self.optic.trace_forward(bearing.as_ref()))?,
+        )
     }
 
     pub fn rows(&self) -> usize {
@@ -271,7 +301,7 @@ impl<O> Camera<O> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use approx::{AbsDiffEq, RelativeEq, relative_eq};
+    use approx::AbsDiffEq;
     use quickcheck::quickcheck;
     use rstest::rstest;
     use uom::si::{
