@@ -17,6 +17,8 @@ use uom::si::f64::Angle;
 system!(struct SimulationEnu using ENU);
 system!(struct CameraXyz using right-handed XYZ);
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Simulation<O> {
     camera: Camera<O>,
     camera_pose: Pose<SimulationEnu>,
@@ -61,8 +63,8 @@ impl<O> Simulation<O> {
     where
         O: Optic,
     {
-        RayImage::from_pixels(
-            self.camera.pixels().map(|px| self.ray(px)).collect(),
+        RayImage::from_rays(
+            self.camera.pixels().map(|px| self.ray(px)),
             self.camera.rows(),
             self.camera.cols(),
         )

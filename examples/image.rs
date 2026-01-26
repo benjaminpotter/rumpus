@@ -23,7 +23,7 @@ fn main() {
     // the image sensor as a RaySensor.
     let rays: Vec<_> = intensity_image.rays().map(|ray| Some(ray)).collect();
     let ray_image =
-        RayImage::from_pixels(rays, intensity_image.height(), intensity_image.width()).unwrap();
+        RayImage::from_rays(rays, intensity_image.height(), intensity_image.width()).unwrap();
 
     // Save the buffer of RGB pixels as a PNG.
     image::save_buffer(

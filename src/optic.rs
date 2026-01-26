@@ -1,20 +1,8 @@
-use std::marker::PhantomData;
-
-use nalgebra::Vector2;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-use sguaba::{
-    Bearing, Coordinate, Vector, coordinate, engineering::Orientation, math::RigidBodyTransform,
-    system, systems::XyzComponents,
-};
 use uom::{
     ConstZero,
-    num_traits::Pow,
-    si::{
-        f64::*,
-        length::{meter, micron},
-        ratio::ratio,
-    },
+    si::{f64::*, length::meter, ratio::ratio},
 };
 
 /// ```text
@@ -229,13 +217,16 @@ impl Optic for PinholeOptic {
 
     fn trace_forward(&self, bearing: &RayDirection) -> SensorCoordinate {
         let ray_length_xy = -self.focal_length * bearing.polar().tan();
-        let x = ray_length_xy * bearing.azimuth().cos();
-        let y = ray_length_xy * bearing.azimuth().sin();
+        let azimuth = bearing.azimuth();
+        let x = ray_length_xy * azimuth.cos();
+        let y = ray_length_xy * azimuth.sin();
 
         SensorCoordinate::new(x, y)
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Camera<O> {
     optic: O,
     sensor: ImageSensor,
@@ -279,10 +270,13 @@ impl<O> Camera<O> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use approx::{AbsDiffEq, relative_eq};
+    use approx::{AbsDiffEq, RelativeEq, relative_eq};
     use quickcheck::quickcheck;
     use rstest::rstest;
-    use uom::si::length::{meter, micron, millimeter};
+    use uom::si::{
+        angle::degree,
+        length::{meter, micron, millimeter},
+    };
 
     impl AbsDiffEq for SensorCoordinate {
         type Epsilon = f64;
@@ -295,6 +289,19 @@ mod tests {
             // Meter is the base unit for the Length quantity.
             (self.x() - other.x()).abs().get::<meter>() <= epsilon
                 && (self.y() - other.y()).abs().get::<meter>() <= epsilon
+        }
+    }
+
+    impl AbsDiffEq for RayDirection {
+        type Epsilon = Angle;
+
+        fn default_epsilon() -> Self::Epsilon {
+            Angle::new::<degree>(f64::EPSILON)
+        }
+
+        fn abs_diff_eq(&self, other: &Self, epsilon: Self::Epsilon) -> bool {
+            (self.polar() - other.polar()).abs() <= epsilon
+                && (self.azimuth() - other.azimuth()).abs() <= epsilon
         }
     }
 
@@ -314,29 +321,33 @@ mod tests {
 
             let result = cam.trace_forward(&cam.trace_backward(&px));
 
-            // FIXME: Why doesn't this want to work??
-            // relative_eq!(px, result)
-
             px.abs_diff_eq(&result, f64::EPSILON)
         }
     }
 
-    #[test]
-    fn pinhole_0_1() {
-        let x_seed = 0;
-        let y_seed = 1;
-        let x = Length::new::<micron>(x_seed as f64 * 5000. / i16::MAX as f64);
-        let y = Length::new::<micron>(y_seed as f64 * 5000. / i16::MAX as f64);
-        let px = SensorCoordinate::new(x, y);
-        let focal_length = Length::new::<millimeter>(8.0);
-        let cam = PinholeOptic::from_focal_length(focal_length);
-
-        let result = cam.trace_forward(&cam.trace_backward(&px));
-
-        println!("{:#?}", px);
+    #[rstest]
+    #[case(100.0, 100.0, 179.0, 45.0)]
+    #[case(-100.0, 100.0, 179.0, 135.0)]
+    #[case(-100.0, -100.0, 179.0, -135.0)]
+    #[case(100.0, -100.0, 179.0, -45.0)]
+    fn pinhole_trace_backward(
+        #[case] x_um: f64,
+        #[case] y_um: f64,
+        #[case] polar_deg: f64,
+        #[case] azimuth_deg: f64,
+    ) {
+        let pinhole = PinholeOptic::from_focal_length(Length::new::<millimeter>(8.));
+        let coord = SensorCoordinate::new(Length::new::<micron>(x_um), Length::new::<micron>(y_um));
+        let result = pinhole.trace_backward(&coord);
         println!("{:#?}", result);
 
-        assert!(px.abs_diff_eq(&result, f64::EPSILON));
+        assert!(result.abs_diff_eq(
+            &RayDirection::from_angles(
+                Angle::new::<degree>(polar_deg),
+                Angle::new::<degree>(azimuth_deg)
+            ),
+            Angle::new::<degree>(1.0)
+        ));
     }
 
     #[rstest]

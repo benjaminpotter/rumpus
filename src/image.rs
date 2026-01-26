@@ -55,12 +55,20 @@ impl<T> Matrix<T> {
         }
     }
 
-    fn iter_elements(&self) -> impl Iterator<Item = &T> {
+    fn iter(&self) -> impl Iterator<Item = &T> {
         self.elements.iter()
     }
 
+    fn into_iter(self) -> impl Iterator<Item = T> {
+        self.elements.into_iter()
+    }
+
+    fn cells(&self) -> Cells<'_, T> {
+        Cells::new(&self.elements, self.rows, self.cols)
+    }
+
     fn map_by<U>(&self, map: impl Fn(&T) -> U) -> Matrix<U> {
-        let elements: Vec<_> = self.iter_elements().map(|elem| map(elem)).collect();
+        let elements: Vec<_> = self.iter().map(|elem| map(elem)).collect();
         Matrix::from_elements(elements, self.rows, self.cols)
             // This is fine as long as the type continues to maintain the invariant that the length
             // of the elements list matches the size of the extents.
@@ -87,6 +95,51 @@ impl<T> Matrix<T> {
 
     fn cols(&self) -> usize {
         self.cols
+    }
+}
+
+struct Cells<'a, T> {
+    elements: std::vec::IntoIter<&'a T>,
+    index: usize,
+    rows: usize,
+    cols: usize,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct MatrixCell<'a, T> {
+    element: &'a T,
+    row: usize,
+    col: usize,
+}
+
+impl<'a, T> Cells<'a, T> {
+    fn new(elements: impl IntoIterator<Item = &'a T>, rows: usize, cols: usize) -> Self {
+        let elements: Vec<_> = elements.into_iter().collect();
+        Self {
+            elements: elements.into_iter(),
+            index: 0,
+            rows,
+            cols,
+        }
+    }
+}
+
+impl<'a, T> Iterator for Cells<'a, T> {
+    type Item = MatrixCell<'a, T>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let row = self.index / self.cols;
+        let col = self.index % self.cols;
+        let Some(element) = self.elements.next() else {
+            // If there are no more elements to yield:
+            assert_eq!(self.rows, row);
+            assert_eq!(col, 0);
+            return None;
+        };
+
+        self.index += 1;
+
+        Some(MatrixCell { element, row, col })
     }
 }
 
@@ -243,12 +296,12 @@ impl<Frame: RayFrame> RayImage<Frame> {
         }
     }
 
-    pub fn from_pixels(
-        pixels: Vec<Option<Ray<Frame>>>,
+    pub fn from_rays(
+        rays: impl IntoIterator<Item = Option<Ray<Frame>>>,
         rows: usize,
         cols: usize,
     ) -> Result<Self, ImageError> {
-        let matrix = Matrix::from_elements(pixels, rows, cols)?;
+        let matrix = Matrix::from_elements(rays, rows, cols)?;
         Ok(Self::from_matrix(matrix))
     }
 
@@ -260,12 +313,20 @@ impl<Frame: RayFrame> RayImage<Frame> {
         self.inner.cols()
     }
 
-    pub fn pixels(&self) -> impl Iterator<Item = Option<&Ray<Frame>>> {
-        self.inner.iter_elements().map(|elem| elem.as_ref())
+    pub fn rays(&self) -> impl Iterator<Item = Option<&Ray<Frame>>> {
+        self.inner.iter().map(|elem| elem.as_ref())
+    }
+
+    pub fn pixels(&self) -> impl Iterator<Item = RayPixel<'_, Frame>> {
+        self.inner.cells().map(|cell| RayPixel {
+            ray: cell.element.as_ref(),
+            row: cell.row,
+            col: cell.col,
+        })
     }
 
     pub fn aop_bytes<M: ColorMap>(&self, color_map: &M) -> Vec<u8> {
-        self.pixels()
+        self.rays()
             .map(|pixel| {
                 pixel
                     .map(|ray| ray.aop().get::<degree>())
@@ -276,10 +337,32 @@ impl<Frame: RayFrame> RayImage<Frame> {
     }
 
     pub fn dop_bytes<M: ColorMap>(&self, color_map: &M) -> Vec<u8> {
-        self.pixels()
+        self.rays()
             .map(|pixel| pixel.map(|ray| ray.dop().into_inner()).unwrap_or(f64::NAN))
             .flat_map(|value| color_map.map(value, 0.0, 1.0))
             .collect()
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct RayPixel<'a, Frame: RayFrame> {
+    ray: Option<&'a Ray<Frame>>,
+    row: usize,
+    col: usize,
+}
+
+impl<'a, Frame: RayFrame> RayPixel<'a, Frame> {
+    pub fn ray(&self) -> &Option<&'a Ray<Frame>> {
+        &self.ray
+    }
+
+    pub fn row(&self) -> usize {
+        self.row
+    }
+
+    pub fn col(&self) -> usize {
+        self.col
     }
 }
 
@@ -349,5 +432,29 @@ impl ColorMap for Jet {
         .unwrap();
 
         [r, g, b]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn matrix_cells() {
+        let elements = vec![10, 20, 30, 1, 2, 3];
+        let matrix = Matrix {
+            elements: elements.clone(),
+            rows: 2,
+            cols: 3,
+        };
+
+        assert_eq!(
+            matrix.cells().skip(3).next(),
+            Some(MatrixCell {
+                element: &elements[3],
+                row: 1,
+                col: 0,
+            })
+        );
     }
 }

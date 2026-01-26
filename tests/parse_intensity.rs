@@ -24,7 +24,7 @@ fn ray_image<P: AsRef<Path>>(path: P) -> RayImage<SensorFrame> {
             .expect("image dimensions are even");
 
     let rays: Vec<_> = intensity_image.rays().map(|ray| Some(ray)).collect();
-    RayImage::from_pixels(rays, intensity_image.height(), intensity_image.width()).unwrap()
+    RayImage::from_rays(rays, intensity_image.height(), intensity_image.width()).unwrap()
 }
 
 #[test]

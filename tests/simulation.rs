@@ -24,34 +24,6 @@ use uom::si::{
 system!(struct CameraBody using right-handed XYZ);
 system!(struct CameraEnu using ENU);
 
-// let lens = Lens::from_focal_length(focal_length).expect("focal length is greater than zero");
-// let image_sensor = ImageSensor::new(pixel_size, pixel_size, image_rows, image_cols);
-// let coords: Vec<Coordinate<CameraFrd>> = (0..image_rows)
-//     .flat_map(|row| (0..image_cols).map(move |col| (row, col)))
-//     .map(|(row, col)| image_sensor.at_pixel(row, col).unwrap())
-//     .collect();
-//
-// let sky_model = SkyModel::from_wgs84_and_time();
-//
-// let camera = Optic::new(lens.clone(), orientation);
-// let rays: Vec<Ray<_>> = coords
-//     .par_iter()
-//     .filter_map(|coord| {
-//         let bearing_cam_enu = camera
-//             .trace_from_sensor(*coord)
-//             .expect("coord on sensor plane");
-//         let aop = sky_model.aop(bearing_cam_enu)?;
-//         let dop = sky_model.dop(bearing_cam_enu)?;
-//
-//         Some(Ray::new(*coord, aop, dop))
-//     })
-//     .collect();
-//
-// let ray_image =
-//     RayImage::from_rays_with_sensor(rays, &image_sensor).expect("no ray hits the same pixel");
-//
-// ray_image
-
 fn ray_image() -> RayImage<GlobalFrame> {
     let pixel_size = Length::new::<micron>(3.45 * 2.);
     let image_rows = 1024;
@@ -100,7 +72,7 @@ fn ray_image() -> RayImage<GlobalFrame> {
 fn aop_works() {
     let ray_image = ray_image();
 
-    for pixel in ray_image.pixels() {
+    for pixel in ray_image.rays() {
         assert!(pixel.is_some());
     }
 
