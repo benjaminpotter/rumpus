@@ -109,7 +109,7 @@ impl ImageSensor {
         coord: impl AsRef<SensorCoordinate>,
     ) -> Option<PixelCoordinate> {
         let result = PixelCoordinate::new(
-            ((coord.as_ref().y() / self.pixel_size).get::<ratio>()
+            ((-coord.as_ref().y() / self.pixel_size).get::<ratio>()
                 + self.rows.checked_sub(1)? as f64 / 2.0)
                 .round() as usize,
             ((coord.as_ref().x() / self.pixel_size).get::<ratio>()
@@ -130,7 +130,7 @@ impl ImageSensor {
         match self.contains_pixel(&pixel) {
             true => Some(SensorCoordinate::new(
                 self.pixel_size * (pixel.as_ref().col() as f64 - (self.cols - 1) as f64 / 2.0),
-                self.pixel_size * (pixel.as_ref().row() as f64 - (self.rows - 1) as f64 / 2.0),
+                -self.pixel_size * (pixel.as_ref().row() as f64 - (self.rows - 1) as f64 / 2.0),
             )),
             false => None,
         }
@@ -212,6 +212,7 @@ impl Optic for PinholeOptic {
         );
         let polar = ray_length_xy.atan2(-self.focal_length);
 
+        assert!(polar <= Angle::HALF_TURN && polar >= Angle::HALF_TURN / 2.);
         RayDirection::from_angles(polar, azimuth)
     }
 
@@ -368,6 +369,17 @@ mod tests {
             sensor
                 .pixel_from_sensor(sensor.sensor_from_pixel(px).expect("pixel is on sensor"))
                 .expect("coord is on sensor")
+        );
+    }
+
+    #[test]
+    fn pixel_to_coord_flips_y() {
+        assert!(
+            ImageSensor::new(Length::new::<micron>(3.45 * 2.), 1024, 1224)
+                .sensor_from_pixel(PixelCoordinate::new(0, 0))
+                .unwrap()
+                .y()
+                > Length::ZERO
         );
     }
 }

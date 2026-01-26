@@ -75,6 +75,7 @@ fn is_valid(angle: Angle) -> bool {
 impl Aop<GlobalFrame> {
     /// Transforms the `Aop` from the GlobalFrame into the SensorFrame.
     pub fn into_sensor_frame(self, shift: Angle) -> Aop<SensorFrame> {
+        // FIXME: This might need to be flipped.
         Aop::from_angle_wrapped(self.angle + shift)
     }
 }
@@ -82,6 +83,7 @@ impl Aop<GlobalFrame> {
 impl Aop<SensorFrame> {
     /// Transforms the `Aop` from the SensorFrame into the GlobalFrame.
     pub fn into_global_frame(self, shift: Angle) -> Aop<GlobalFrame> {
+        // FIXME: This might need to be flipped.
         Aop::from_angle_wrapped(self.angle - shift)
     }
 }

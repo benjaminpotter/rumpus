@@ -12,7 +12,7 @@ use sguaba::{
     system,
     systems::{BearingDefined, Ecef},
 };
-use uom::si::f64::Angle;
+use uom::{ConstZero, si::f64::Angle};
 
 system!(struct SimulationEnu using ENU);
 system!(struct CameraXyz using right-handed XYZ);
@@ -44,7 +44,6 @@ impl<O> Simulation<O> {
         O: Optic,
     {
         let ray_bearing = self.camera.trace_from_pixel(pixel)?;
-
         let bearing_cam =
             CameraXyz::spherical_to_bearing(ray_bearing.polar(), ray_bearing.azimuth()).unwrap();
 

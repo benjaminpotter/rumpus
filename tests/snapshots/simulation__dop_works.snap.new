@@ -1,7 +1,0 @@
----
-source: tests/simulation.rs
-assertion_line: 106
-expression: png_bytes
-extension: png
-snapshot_kind: binary
----
