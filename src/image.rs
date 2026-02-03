@@ -257,7 +257,8 @@ impl Iterator for Rays<'_> {
     type Item = Ray<SensorFrame>;
     fn next(&mut self) -> Option<Self::Item> {
         let px = self.inner.next()?;
-        Some(Ray::from_stokes(px.stokes()))
+        // TODO: Might want to propagate this error..
+        Ray::try_from(px.stokes()).ok()
     }
 }
 

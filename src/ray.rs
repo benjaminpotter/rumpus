@@ -1,7 +1,14 @@
-use crate::light::{aop::Aop, dop::Dop, stokes::StokesVec};
+use crate::light::{LightError, aop::Aop, dop::Dop, stokes::StokesVec};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 use uom::si::f64::Angle;
+
+#[derive(Debug, Error)]
+pub enum RayError {
+    #[error("failed to parse stokes vector")]
+    InvalidStokes(#[from] LightError),
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -28,7 +35,7 @@ pub struct Ray<Frame> {
 
 impl<Frame> Ray<Frame> {
     /// Creates a new `Ray` from a polarization `angle` and `degree`.
-    #[must_use] 
+    #[must_use]
     pub fn new(angle: Aop<Frame>, degree: Dop) -> Self {
         Self {
             angle,
@@ -37,17 +44,12 @@ impl<Frame> Ray<Frame> {
         }
     }
 
-    #[must_use] 
-    pub fn from_stokes(stokes: StokesVec<Frame>) -> Self {
-        Self::new(stokes.aop(), stokes.dop())
-    }
-
-    #[must_use] 
+    #[must_use]
     pub fn aop(&self) -> &Aop<Frame> {
         &self.angle
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn dop(&self) -> &Dop {
         &self.degree
     }
@@ -55,7 +57,7 @@ impl<Frame> Ray<Frame> {
 
 impl Ray<GlobalFrame> {
     /// Transforms the Ray from the `GlobalFrame` into the `SensorFrame`.
-    #[must_use] 
+    #[must_use]
     pub fn into_sensor_frame(self, shift: Angle) -> Ray<SensorFrame> {
         Ray::new(self.angle.into_sensor_frame(shift), self.degree)
     }
@@ -63,8 +65,16 @@ impl Ray<GlobalFrame> {
 
 impl Ray<SensorFrame> {
     /// Transforms the Ray from the `SensorFrame` into the `GlobalFrame`.
-    #[must_use] 
+    #[must_use]
     pub fn into_global_frame(self, shift: Angle) -> Ray<GlobalFrame> {
         Ray::new(self.angle.into_global_frame(shift), self.degree)
+    }
+}
+
+impl<Frame> TryFrom<StokesVec<Frame>> for Ray<Frame> {
+    type Error = RayError;
+
+    fn try_from(stokes: StokesVec<Frame>) -> Result<Self, Self::Error> {
+        Ok(Self::new(stokes.aop()?, stokes.dop()?))
     }
 }

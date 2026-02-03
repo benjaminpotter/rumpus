@@ -59,12 +59,18 @@ impl<O> Simulation<O> {
         }
     }
 
+    /// # Panics
+    /// Panics if the [`crate::optic::RayDirection`] returned by the [`Camera`] points behind the
+    /// plane of the sensor.
+    /// This would represent a field of view larger than 180 degrees.
     pub fn ray(&self, pixel: impl AsRef<PixelCoordinate>) -> Option<Ray<GlobalFrame>>
     where
         O: Optic,
     {
         // Defined in the body frame of the camera.
         let ray_direction = self.camera.trace_from_pixel(pixel)?;
+
+        // FIXME: This should probably be allowed... what happens if a lens has a FOV > 180?
         let bearing_cam =
             CameraXyz::spherical_to_bearing(ray_direction.polar(), ray_direction.azimuth())
                 .unwrap();
@@ -80,6 +86,10 @@ impl<O> Simulation<O> {
         ))
     }
 
+    /// # Panics
+    /// Panics if the dimensions of the [`Camera`]'s image sensor do not match the results returned
+    /// by [`Camera::pixels`].
+    /// This should never occur.
     pub fn ray_image(&self) -> RayImage<GlobalFrame>
     where
         O: Optic,
@@ -92,6 +102,10 @@ impl<O> Simulation<O> {
         .unwrap()
     }
 
+    /// # Panics
+    /// Panics if the dimensions of the [`Camera`]'s image sensor do not match the results returned
+    /// by [`Camera::pixels`].
+    /// This should never occur.
     pub fn par_ray_image(&self) -> RayImage<GlobalFrame>
     where
         O: Optic + Send + Sync,

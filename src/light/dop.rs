@@ -3,6 +3,8 @@ use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+use crate::light::LightError;
+
 /// Describes the intensity ratio of polarized light in a ray.
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -12,7 +14,8 @@ pub struct Dop {
 
 impl Dop {
     /// Create a new `Dop` from `degree`.
-    #[must_use] 
+    #[must_use]
+    #[deprecated]
     pub fn new(degree: f64) -> Option<Self> {
         if (0.0..=1.0).contains(&degree) {
             Some(Self { inner: degree })
@@ -21,7 +24,17 @@ impl Dop {
         }
     }
 
-    #[must_use] 
+    /// Create a new `Dop` from `degree`.
+    #[must_use]
+    pub fn try_new(degree: f64) -> Result<Self, LightError> {
+        if (0.0..=1.0).contains(&degree) {
+            Ok(Self { inner: degree })
+        } else {
+            Err(LightError::DegreeOutOfBounds { degree })
+        }
+    }
+
+    #[must_use]
     pub fn clamped(degree: f64) -> Self {
         Self {
             inner: degree.clamp(0., 1.),
@@ -29,7 +42,7 @@ impl Dop {
     }
 
     /// Create a new `Dop` of zero.
-    #[must_use] 
+    #[must_use]
     pub fn zero() -> Self {
         Self { inner: 0. }
     }
