@@ -65,6 +65,14 @@ impl<T> Matrix<T> {
     fn cols(&self) -> usize {
         self.cols
     }
+
+    fn index(&self, row: usize, col: usize) -> usize {
+        row * self.cols() + col
+    }
+
+    fn cell(&self, row: usize, col: usize) -> &T {
+        &self.elements[self.index(row, col)]
+    }
 }
 
 struct Cells<'a, T> {
@@ -280,6 +288,10 @@ impl<Frame: RayFrame> RayImage<Frame> {
 
     pub fn cols(&self) -> usize {
         self.inner.cols()
+    }
+
+    pub fn ray(&self, row: usize, col: usize) -> Option<&Ray<Frame>> {
+        self.inner.cell(row, col).as_ref()
     }
 
     pub fn rays(&self) -> impl Iterator<Item = Option<&Ray<Frame>>> {
