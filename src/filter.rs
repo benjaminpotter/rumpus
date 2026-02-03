@@ -40,7 +40,9 @@ pub struct DopFilter {
 
 impl DopFilter {
     pub fn new(min: f64) -> Self {
-        Self { min: Dop::new(min) }
+        Self {
+            min: Dop::clamped(min),
+        }
     }
 }
 

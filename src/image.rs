@@ -319,7 +319,7 @@ impl<Frame: RayFrame> RayImage<Frame> {
 
     pub fn dop_bytes<M: ColorMap>(&self, color_map: &M) -> Vec<u8> {
         self.rays()
-            .map(|pixel| pixel.map(|ray| ray.dop().into_inner()).unwrap_or(f64::NAN))
+            .map(|pixel| pixel.map(|ray| Into::into(*ray.dop())).unwrap_or(f64::NAN))
             .flat_map(|value| color_map.map(value, 0.0, 1.0))
             .collect()
     }

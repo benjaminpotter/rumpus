@@ -105,7 +105,7 @@ impl<In> SkyModel<In> {
         let deg = max_dop * scattering_angle.sin().get::<ratio>().powf(2.0)
             / (1.0 + scattering_angle.cos().get::<ratio>().powf(2.0));
 
-        Some(Dop::new(deg))
+        Some(Dop::new(deg).unwrap())
     }
 }
 
@@ -128,7 +128,7 @@ mod tests {
             };
 
             relative_eq!(
-                SkyModel::from_solar_bearing(
+                Into::<Angle>::into(SkyModel::from_solar_bearing(
                     Bearing::<ModelEnu>::builder()
                         .azimuth(Angle::new::<degree>(0.0))
                         .elevation(Angle::new::<degree>(45.0))
@@ -142,8 +142,7 @@ mod tests {
                         .expect("elevation should be on the range -90 to 90")
                         .build(),
                 )
-                .expect("bearing is above the horizon")
-                .into_inner()
+                .expect("bearing is above the horizon"))
                 .get::<degree>()
                 .abs(),
                 90.0
