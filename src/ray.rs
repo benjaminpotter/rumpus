@@ -3,22 +3,18 @@ use crate::light::{aop::Aop, dop::Dop, stokes::StokesVec};
 use serde::{Deserialize, Serialize};
 use uom::si::f64::Angle;
 
-pub trait RayFrame: Copy + Clone + std::fmt::Debug + PartialEq {}
-
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct GlobalFrame;
-impl RayFrame for GlobalFrame {}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct SensorFrame;
-impl RayFrame for SensorFrame {}
 
 /// Describes the angle and degree of polarization for a single ray.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct Ray<Frame: RayFrame> {
+pub struct Ray<Frame> {
     /// Angle of polarization of the `Ray`.
     ///
     /// This refers to the e-vector angle with respect to `Frame`.
@@ -30,7 +26,7 @@ pub struct Ray<Frame: RayFrame> {
     _phan: std::marker::PhantomData<Frame>,
 }
 
-impl<Frame: RayFrame> Ray<Frame> {
+impl<Frame> Ray<Frame> {
     /// Creates a new `Ray` from a polarization `angle` and `degree`.
     pub fn new(angle: Aop<Frame>, degree: Dop) -> Self {
         Self {

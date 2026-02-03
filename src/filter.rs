@@ -1,7 +1,7 @@
 use crate::{
     iter::RayIterator,
     light::{aop::Aop, dop::Dop},
-    ray::{Ray, RayFrame},
+    ray::Ray,
 };
 use uom::si::f64::Angle;
 
@@ -10,24 +10,24 @@ use uom::si::f64::Angle;
 /// Implementors of this `trait` are used with [`RayFilter`].
 ///
 /// [`RayFilter`]: RayFilter
-pub trait RayPredicate<Frame: RayFrame> {
+pub trait RayPredicate<Frame> {
     fn eval(&self, ray: &Ray<Frame>) -> bool;
 }
 
 /// A predicate that holds on rays with
 /// `center - thres <= Aop <= center + thres` and handles wrapping.
-pub struct AopFilter<Frame: RayFrame> {
+pub struct AopFilter<Frame> {
     center: Aop<Frame>,
     thres: Angle,
 }
 
-impl<Frame: RayFrame> AopFilter<Frame> {
+impl<Frame> AopFilter<Frame> {
     pub fn new(center: Aop<Frame>, thres: Angle) -> Self {
         Self { center, thres }
     }
 }
 
-impl<Frame: RayFrame> RayPredicate<Frame> for AopFilter<Frame> {
+impl<Frame: Copy> RayPredicate<Frame> for AopFilter<Frame> {
     fn eval(&self, ray: &Ray<Frame>) -> bool {
         self.center.in_thres(ray.aop(), self.thres)
     }
@@ -46,7 +46,7 @@ impl DopFilter {
     }
 }
 
-impl<Frame: RayFrame> RayPredicate<Frame> for DopFilter {
+impl<Frame> RayPredicate<Frame> for DopFilter {
     fn eval(&self, ray: &Ray<Frame>) -> bool {
         self.min <= *ray.dop()
     }
@@ -70,7 +70,7 @@ impl<I, P> RayFilter<I, P> {
     }
 }
 
-impl<I, P, Frame: RayFrame> Iterator for RayFilter<I, P>
+impl<I, P, Frame> Iterator for RayFilter<I, P>
 where
     I: Iterator<Item = Ray<Frame>>,
     P: RayPredicate<Frame>,
@@ -82,7 +82,7 @@ where
 }
 
 // All of RayIterator's functions are defined using Iterator.
-impl<I, P, Frame: RayFrame> RayIterator<Frame> for RayFilter<I, P>
+impl<I, P, Frame> RayIterator<Frame> for RayFilter<I, P>
 where
     I: Iterator<Item = Ray<Frame>>,
     P: RayPredicate<Frame>,

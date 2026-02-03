@@ -1,17 +1,17 @@
 use crate::{
     light::{aop::Aop, dop::Dop},
-    ray::RayFrame,
+    ray,
 };
 use uom::si::{angle::radian, f64::Angle};
 
 /// Describes the linear polarization of a ray.
 #[derive(Debug, PartialEq)]
-pub struct StokesVec<Frame: RayFrame> {
+pub struct StokesVec<Frame> {
     inner: [f64; 3],
     _phan: std::marker::PhantomData<Frame>,
 }
 
-impl<Frame: RayFrame> StokesVec<Frame> {
+impl<Frame> StokesVec<Frame> {
     pub fn new(s0: f64, s1: f64, s2: f64) -> Self {
         StokesVec {
             inner: [s0, s1, s2],

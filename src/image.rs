@@ -1,11 +1,11 @@
 use crate::{
     iter::RayIterator,
     light::stokes::StokesVec,
-    ray::{Ray, RayFrame, SensorFrame},
+    ray::{Ray, SensorFrame},
 };
 use rayon::prelude::*;
 use thiserror::Error;
-use uom::si::angle::degree;
+use uom::si::{angle::degree, f64::Angle};
 
 #[derive(Debug, Error)]
 pub enum ImageError {
@@ -260,12 +260,12 @@ impl<'a> Iterator for Rays<'a> {
 impl<'a> RayIterator<SensorFrame> for Rays<'a> {}
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct RayImage<Frame: RayFrame> {
+pub struct RayImage<Frame> {
     inner: Matrix<Option<Ray<Frame>>>,
     _phan: std::marker::PhantomData<Frame>,
 }
 
-impl<Frame: RayFrame> RayImage<Frame> {
+impl<Frame> RayImage<Frame> {
     fn from_matrix(matrix: Matrix<Option<Ray<Frame>>>) -> Self {
         Self {
             inner: matrix,
@@ -306,11 +306,14 @@ impl<Frame: RayFrame> RayImage<Frame> {
         })
     }
 
-    pub fn aop_bytes<M: ColorMap>(&self, color_map: &M) -> Vec<u8> {
+    pub fn aop_bytes<M: ColorMap>(&self, color_map: &M) -> Vec<u8>
+    where
+        Frame: Copy,
+    {
         self.rays()
             .map(|pixel| {
                 pixel
-                    .map(|ray| ray.aop().get::<degree>())
+                    .map(|ray| Into::<Angle>::into(*ray.aop()).get::<degree>())
                     .unwrap_or(f64::NAN)
             })
             .flat_map(|value| color_map.map(value, -90.0, 90.0))
@@ -327,13 +330,13 @@ impl<Frame: RayFrame> RayImage<Frame> {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct RayPixel<'a, Frame: RayFrame> {
+pub struct RayPixel<'a, Frame> {
     ray: Option<&'a Ray<Frame>>,
     row: usize,
     col: usize,
 }
 
-impl<'a, Frame: RayFrame> RayPixel<'a, Frame> {
+impl<'a, Frame> RayPixel<'a, Frame> {
     pub fn ray(&self) -> &Option<&'a Ray<Frame>> {
         &self.ray
     }

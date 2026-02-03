@@ -1,7 +1,6 @@
-use crate::ray::{GlobalFrame, RayFrame, SensorFrame};
+use crate::ray::{GlobalFrame, SensorFrame};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-use std::ops::Deref;
 use uom::si::f64::Angle;
 
 /// Describes the e-vector orientation of a ray.
@@ -11,21 +10,13 @@ use uom::si::f64::Angle;
 /// For example, we consider angles 180 and 0 to be the same.
 #[derive(Clone, Copy, Debug, PartialOrd)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct Aop<Frame: RayFrame> {
+pub struct Aop<Frame> {
     /// The angle of the e-vector of the ray.
     inner: Angle,
     _phan: std::marker::PhantomData<Frame>,
 }
 
-impl<Frame: RayFrame> Deref for Aop<Frame> {
-    type Target = Angle;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
-}
-
-impl<Frame: RayFrame> Aop<Frame> {
+impl<Frame> Aop<Frame> {
     fn is_valid(angle: &Angle) -> bool {
         (-Angle::HALF_TURN / 2.0..=Angle::HALF_TURN / 2.).contains(angle)
     }
@@ -60,7 +51,10 @@ impl<Frame: RayFrame> Aop<Frame> {
 
     /// Returns true if `other` is within `thres` of `self` inclusive and
     /// handling wrapping.
-    pub fn in_thres(&self, other: &Aop<Frame>, thres: Angle) -> bool {
+    pub fn in_thres(&self, other: &Aop<Frame>, thres: Angle) -> bool
+    where
+        Frame: Copy,
+    {
         (*self - *other).inner.abs() <= thres
     }
 }
@@ -81,13 +75,13 @@ impl Aop<SensorFrame> {
     }
 }
 
-impl<Frame: RayFrame> Into<Angle> for Aop<Frame> {
+impl<Frame> Into<Angle> for Aop<Frame> {
     fn into(self) -> Angle {
         self.inner
     }
 }
 
-impl<Frame: RayFrame> std::ops::Add for Aop<Frame> {
+impl<Frame> std::ops::Add for Aop<Frame> {
     type Output = Self;
 
     fn add(self, other: Self) -> Self::Output {
@@ -95,7 +89,7 @@ impl<Frame: RayFrame> std::ops::Add for Aop<Frame> {
     }
 }
 
-impl<Frame: RayFrame> std::ops::Sub for Aop<Frame> {
+impl<Frame> std::ops::Sub for Aop<Frame> {
     type Output = Self;
 
     fn sub(self, other: Self) -> Self::Output {
@@ -103,7 +97,7 @@ impl<Frame: RayFrame> std::ops::Sub for Aop<Frame> {
     }
 }
 
-impl<Frame: RayFrame> std::cmp::PartialEq for Aop<Frame> {
+impl<Frame> std::cmp::PartialEq for Aop<Frame> {
     fn eq(&self, other: &Aop<Frame>) -> bool {
         match self.inner.abs() == Angle::HALF_TURN / 2.
             && other.inner.abs() == Angle::HALF_TURN / 2.
