@@ -322,18 +322,14 @@ impl<Frame> RayImage<Frame> {
         Frame: Copy,
     {
         self.rays()
-            .map(|pixel| {
-                pixel.map_or(f64::NAN, |ray| {
-                    Into::<Angle>::into(*ray.aop()).get::<degree>()
-                })
-            })
+            .map(|pixel| pixel.map_or(f64::NAN, |ray| Angle::from(ray.aop()).get::<degree>()))
             .flat_map(|value| color_map.map(value, -90.0, 90.0))
             .collect()
     }
 
     pub fn dop_bytes<M: ColorMap>(&self, color_map: &M) -> Vec<u8> {
         self.rays()
-            .map(|pixel| pixel.map_or(f64::NAN, |ray| Into::into(*ray.dop())))
+            .map(|pixel| pixel.map_or(f64::NAN, |ray| f64::from(ray.dop())))
             .flat_map(|value| color_map.map(value, 0.0, 1.0))
             .collect()
     }

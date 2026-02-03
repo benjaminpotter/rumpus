@@ -45,13 +45,16 @@ impl<Frame> Ray<Frame> {
     }
 
     #[must_use]
-    pub fn aop(&self) -> &Aop<Frame> {
-        &self.angle
+    pub fn aop(&self) -> Aop<Frame>
+    where
+        Frame: Copy,
+    {
+        self.angle
     }
 
     #[must_use]
-    pub fn dop(&self) -> &Dop {
-        &self.degree
+    pub fn dop(&self) -> Dop {
+        self.degree
     }
 }
 

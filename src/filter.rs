@@ -22,7 +22,7 @@ pub struct AopFilter<Frame> {
 }
 
 impl<Frame> AopFilter<Frame> {
-    #[must_use] 
+    #[must_use]
     pub fn new(center: Aop<Frame>, thres: Angle) -> Self {
         Self { center, thres }
     }
@@ -40,7 +40,7 @@ pub struct DopFilter {
 }
 
 impl DopFilter {
-    #[must_use] 
+    #[must_use]
     pub fn new(min: f64) -> Self {
         Self {
             min: Dop::clamped(min),
@@ -50,7 +50,7 @@ impl DopFilter {
 
 impl<Frame> RayPredicate<Frame> for DopFilter {
     fn eval(&self, ray: &Ray<Frame>) -> bool {
-        self.min <= *ray.dop()
+        self.min <= ray.dop()
     }
 }
 

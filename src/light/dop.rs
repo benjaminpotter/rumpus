@@ -77,6 +77,20 @@ impl<Rhs: Into<f64>> AddAssign<Rhs> for Dop {
     }
 }
 
+impl Add<Dop> for f64 {
+    type Output = Self;
+
+    fn add(self, rhs: Dop) -> Self::Output {
+        self + rhs.inner
+    }
+}
+
+impl AddAssign<Dop> for f64 {
+    fn add_assign(&mut self, rhs: Dop) {
+        *self = *self + rhs;
+    }
+}
+
 impl<Rhs: Into<f64>> Sub<Rhs> for Dop {
     type Output = Self;
 

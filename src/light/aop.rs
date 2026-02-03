@@ -74,11 +74,11 @@ impl<Frame> Aop<Frame> {
     /// Returns true if `other` is within `thres` of `self` inclusive and
     /// handling wrapping.
     #[must_use]
-    pub fn in_thres(&self, other: &Aop<Frame>, thres: Angle) -> bool
+    pub fn in_thres(self, other: Aop<Frame>, thres: Angle) -> bool
     where
         Frame: Copy,
     {
-        (*self - *other).inner.abs() <= thres
+        (self - other).inner.abs() <= thres
     }
 }
 
@@ -193,9 +193,9 @@ mod tests {
         #[case] in_thres: bool,
     ) {
         assert_eq!(
-            Aop::<GlobalFrame>::from_angle(center)
+            Aop::<GlobalFrame>::try_from_angle(center)
                 .unwrap()
-                .in_thres(&Aop::<GlobalFrame>::from_angle(case).unwrap(), thres,),
+                .in_thres(Aop::<GlobalFrame>::try_from_angle(case).unwrap(), thres,),
             in_thres
         );
     }
