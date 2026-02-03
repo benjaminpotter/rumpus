@@ -3,9 +3,9 @@ use crate::{light::aop::Aop, ray::GlobalFrame};
 use chrono::prelude::*;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+use sguaba::CoordinateSystem;
 use sguaba::systems::EnuLike;
 use sguaba::{Bearing, systems::Wgs84};
-use sguaba::CoordinateSystem;
 use uom::{
     ConstZero,
     si::{angle::degree, f64::Angle, ratio::ratio},
@@ -114,6 +114,7 @@ mod tests {
     use super::*;
     use approx::relative_eq;
     use quickcheck::quickcheck;
+    use sguaba::system;
     use uom::si::angle::degree;
 
     system!(struct ModelEnu using ENU);

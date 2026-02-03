@@ -3,7 +3,6 @@
 //! Skylight Polarization Utilities
 
 pub mod error;
-pub mod estimator;
 pub mod filter;
 pub mod image;
 pub mod iter;
@@ -15,7 +14,6 @@ pub mod simulation;
 
 pub mod prelude {
     pub use crate::error::Error;
-    pub use crate::estimator::pattern_match::{PatternMatch, VecSearch};
     pub use crate::filter::{AopFilter, DopFilter, RayFilter};
     pub use crate::image::{IntensityImage, RayImage};
     pub use crate::iter::RayIterator;

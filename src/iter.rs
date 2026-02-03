@@ -1,5 +1,4 @@
 use super::{
-    estimator::Estimator,
     filter::{RayFilter, RayPredicate},
     ray::{Ray, RayFrame},
 };
@@ -12,13 +11,5 @@ pub trait RayIterator<Frame: RayFrame>: Iterator<Item = Ray<Frame>> {
         Self: Sized,
     {
         RayFilter::new(self, pred)
-    }
-
-    fn estimate<E, O>(self, estimator: E) -> O
-    where
-        Self: Sized,
-        E: Estimator<Frame, Output = O>,
-    {
-        estimator.estimate(self)
     }
 }
