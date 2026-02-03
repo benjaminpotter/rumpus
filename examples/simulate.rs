@@ -78,7 +78,7 @@ fn main() {
     let dop_image: Vec<u8> = ray_image
         .pixels()
         .flat_map(|pixel| match pixel {
-            Some(ray) => to_rgb(ray.dop().into_inner(), 0.0, 1.0).expect("dop in between 0 and 1"),
+            Some(ray) => to_rgb(*ray.dop(), 0.0, 1.0).expect("dop in between 0 and 1"),
             None => [255, 255, 255],
         })
         .collect();
@@ -103,7 +103,8 @@ fn main() {
 }
 
 // Map an f64 on the interval [x_min, x_max] to an RGB color.
-pub fn to_rgb(x: f64, x_min: f64, x_max: f64) -> Option<[u8; 3]> {
+pub fn to_rgb(x: impl Into<f64>, x_min: f64, x_max: f64) -> Option<[u8; 3]> {
+    let x = x.into();
     if x < x_min || x > x_max {
         return None;
     }

@@ -28,5 +28,6 @@ impl<Frame: RayFrame> StokesVec<Frame> {
     /// Compute the DoP of the ray.
     pub fn dop(&self) -> Dop {
         Dop::new((self.inner[1].powf(2.) + self.inner[2].powf(2.)).sqrt() / self.inner[0])
+            .expect("dop within [0, 1]")
     }
 }

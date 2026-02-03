@@ -91,7 +91,7 @@ impl SkyModel {
         let deg = max_dop * scattering_angle.sin().get::<ratio>().powf(2.0)
             / (1.0 + scattering_angle.cos().get::<ratio>().powf(2.0));
 
-        Some(Dop::new(deg))
+        Some(Dop::new(deg).unwrap())
     }
 }
 

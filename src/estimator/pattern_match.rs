@@ -1,17 +1,17 @@
 use crate::{
+    CameraEnu,
     camera::{Camera, Lens},
     estimator::Estimator,
     iter::RayIterator,
     light::dop::Dop,
     model::SkyModel,
     ray::{Ray, SensorFrame},
-    CameraEnu,
 };
 use rayon::prelude::*;
-use sguaba::{engineering::Orientation, Bearing};
+use sguaba::{Bearing, engineering::Orientation};
 use uom::{
-    si::{angle::radian, f64::Angle},
     ConstZero,
+    si::{angle::radian, f64::Angle},
 };
 
 /// Estimates ort using simulated images and a loss function.
@@ -81,7 +81,7 @@ impl<S: Searcher> Estimator<SensorFrame> for PatternMatch<S> {
                         // modelled ray and the measured ray.
                         let delta = *ray.aop() - *modelled_ray_sensor.aop();
                         let sq_diff = delta.into_inner().get::<radian>().powf(2.);
-                        let weight = 1. / (*ray.dop()).into_inner();
+                        let weight = 1. / *ray.dop();
                         let weighted_sq_diff = weight * sq_diff;
 
                         Some(weighted_sq_diff)

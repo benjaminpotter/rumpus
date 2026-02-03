@@ -7,6 +7,8 @@ use uom::si::f64::Angle;
 /// Describes the e-vector orientation of a ray.
 ///
 /// The angle of the e-vector must be between -90.0 and 90.0.
+/// This is the convention for angle of polarization.
+/// For example, we consider angles 180 and 0 to be the same.
 #[derive(Clone, Copy, Debug, PartialOrd)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Aop<Frame: RayFrame> {

@@ -13,6 +13,7 @@ serde = { version="1.0", features=["derive"], optional=true }
 sguaba = "0.9.4"
 uom = "0.37.0"
 thiserror = "2.0.17"
+quickcheck_macros = "1.1.0"
 
 [features]
 serde = ["dep:serde", "nalgebra/serde-serialize" ]
