@@ -2,7 +2,11 @@
 use serde::{Deserialize, Serialize};
 use uom::{
     ConstZero,
-    si::{f64::*, length::meter, ratio::ratio},
+    si::{
+        f64::{Angle, Length},
+        length::meter,
+        ratio::ratio,
+    },
 };
 
 /// Describes a 2d coordinate on an image sensor.
@@ -32,10 +36,12 @@ pub struct SensorCoordinate {
 }
 
 impl SensorCoordinate {
+    #[must_use]
     pub fn new(x: Length, y: Length) -> Self {
         Self { x, y }
     }
 
+    #[must_use]
     pub fn optical_center() -> Self {
         Self {
             x: Length::ZERO,
@@ -43,10 +49,12 @@ impl SensorCoordinate {
         }
     }
 
+    #[must_use]
     pub fn x(&self) -> Length {
         self.x
     }
 
+    #[must_use]
     pub fn y(&self) -> Length {
         self.y
     }
@@ -54,7 +62,7 @@ impl SensorCoordinate {
 
 impl AsRef<SensorCoordinate> for SensorCoordinate {
     fn as_ref(&self) -> &SensorCoordinate {
-        &self
+        self
     }
 }
 
@@ -71,14 +79,17 @@ pub struct PixelCoordinate {
 }
 
 impl PixelCoordinate {
+    #[must_use]
     pub fn new(row: usize, col: usize) -> Self {
         Self { row, col }
     }
 
+    #[must_use]
     pub fn row(&self) -> usize {
         self.row
     }
 
+    #[must_use]
     pub fn col(&self) -> usize {
         self.col
     }
@@ -86,7 +97,7 @@ impl PixelCoordinate {
 
 impl AsRef<PixelCoordinate> for PixelCoordinate {
     fn as_ref(&self) -> &PixelCoordinate {
-        &self
+        self
     }
 }
 
@@ -101,6 +112,7 @@ pub struct ImageSensor {
 }
 
 impl ImageSensor {
+    #[must_use]
     pub fn new(pixel_size: Length, rows: usize, cols: usize) -> Self {
         Self {
             pixel_size,
@@ -109,14 +121,17 @@ impl ImageSensor {
         }
     }
 
+    #[must_use]
     pub fn pixel_count(&self) -> usize {
         self.cols * self.rows
     }
 
+    #[must_use]
     pub fn rows(&self) -> usize {
         self.rows
     }
 
+    #[must_use]
     pub fn cols(&self) -> usize {
         self.cols
     }
@@ -194,14 +209,17 @@ pub struct RayDirection {
 }
 
 impl RayDirection {
+    #[must_use]
     pub fn from_angles(polar: Angle, azimuth: Angle) -> Self {
         Self { polar, azimuth }
     }
 
+    #[must_use]
     pub fn polar(&self) -> Angle {
         self.polar
     }
 
+    #[must_use]
     pub fn azimuth(&self) -> Angle {
         self.azimuth
     }
@@ -219,10 +237,14 @@ pub struct PinholeOptic {
 }
 
 impl PinholeOptic {
+    /// # Panics
+    /// Panics if the `focal_length` is less than or equal to zero.
+    #[must_use]
     pub fn from_focal_length(focal_length: Length) -> Self {
-        if focal_length <= Length::ZERO {
-            panic!("focal length must be greater than zero");
-        }
+        assert!(
+            focal_length > Length::ZERO,
+            "focal length must be greater than zero: {focal_length:#?}",
+        );
 
         Self { focal_length }
     }
@@ -283,10 +305,8 @@ impl<O> Camera<O> {
     where
         O: Optic,
     {
-        Some(
-            self.sensor
-                .pixel_from_sensor(self.optic.trace_forward(bearing.as_ref()))?,
-        )
+        let sensor_coord = self.optic.trace_forward(bearing.as_ref());
+        self.sensor.pixel_from_sensor(sensor_coord)
     }
 
     pub fn rows(&self) -> usize {
@@ -370,7 +390,7 @@ mod tests {
         let pinhole = PinholeOptic::from_focal_length(Length::new::<millimeter>(8.));
         let coord = SensorCoordinate::new(Length::new::<micron>(x_um), Length::new::<micron>(y_um));
         let result = pinhole.trace_backward(&coord);
-        println!("{:#?}", result);
+        println!("{result:#?}");
 
         assert!(result.abs_diff_eq(
             &RayDirection::from_angles(

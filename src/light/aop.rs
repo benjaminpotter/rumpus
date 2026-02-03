@@ -75,9 +75,9 @@ impl Aop<SensorFrame> {
     }
 }
 
-impl<Frame> Into<Angle> for Aop<Frame> {
-    fn into(self) -> Angle {
-        self.inner
+impl<Frame> From<Aop<Frame>> for Angle {
+    fn from(aop: Aop<Frame>) -> Self {
+        aop.inner
     }
 }
 

@@ -39,14 +39,14 @@ impl<T> Matrix<T> {
     ) -> Result<Self, ImageError> {
         let elements: Vec<_> = elements.into_iter().collect();
         let len = elements.len();
-        if rows * cols != len {
-            Err(ImageError::SizeMismatch { rows, cols, len })
-        } else {
+        if rows * cols == len {
             Ok(Self {
                 elements,
                 rows,
                 cols,
             })
+        } else {
+            Err(ImageError::SizeMismatch { rows, cols, len })
         }
     }
 
@@ -157,9 +157,9 @@ pub struct IntensityImage {
 }
 
 impl IntensityImage {
-    /// Create an intensity image from an array of bytes.
+    /// Create an [`IntensityImage`] from an array of bytes.
     ///
-    /// A division of focal plane (DoFP) polarized camera has a micro-polarizer
+    /// A division of focal plane polarized camera has a micro-polarizer
     /// array in between the lens and the sensor. The micro-polarizer array
     /// allows the camera to image the intensity of light through two sets of
     /// orthogonal linear polarizing filters. The pattern of the
@@ -188,6 +188,8 @@ impl IntensityImage {
     /// +--------+
     /// | w(h-1) |
     /// ```
+    ///
+    /// # Errors
     pub fn from_bytes(width: usize, height: usize, bytes: &[u8]) -> Result<Self, ImageError> {
         let meta_width = width
             .checked_div(2)
@@ -203,18 +205,18 @@ impl IntensityImage {
         let metapixels: Vec<IntensityPixel> = coords
             .into_par_iter()
             .map(|(x, y)| {
-                let i000 = (x as usize * 2 + 1) + (y as usize * 2 + 1) * width as usize;
-                let i045 = (x as usize * 2) + (y as usize * 2 + 1) * width as usize;
-                let i090 = (x as usize * 2) + (y as usize * 2) * width as usize;
-                let i135 = (x as usize * 2 + 1) + (y as usize * 2) * width as usize;
+                let i000 = (x * 2 + 1) + (y * 2 + 1) * width;
+                let i045 = (x * 2) + (y * 2 + 1) * width;
+                let i090 = (x * 2) + (y * 2) * width;
+                let i135 = (x * 2 + 1) + (y * 2) * width;
 
                 // FIXME: Catch problems with the size of `bytes`.
                 IntensityPixel {
                     inner: [
-                        bytes[i000] as f64,
-                        bytes[i045] as f64,
-                        bytes[i090] as f64,
-                        bytes[i135] as f64,
+                        f64::from(bytes[i000]),
+                        f64::from(bytes[i045]),
+                        f64::from(bytes[i090]),
+                        f64::from(bytes[i135]),
                     ],
                 }
             })
@@ -227,15 +229,18 @@ impl IntensityImage {
         })
     }
 
+    #[must_use]
     pub fn width(&self) -> usize {
         self.width
     }
 
+    #[must_use]
     pub fn height(&self) -> usize {
         self.height
     }
 
-    pub fn rays<'a>(&'a self) -> Rays<'a> {
+    #[must_use]
+    pub fn rays(&self) -> Rays<'_> {
         Rays {
             inner: self.metapixels.iter(),
         }
@@ -248,7 +253,7 @@ pub struct Rays<'a> {
     inner: std::slice::Iter<'a, IntensityPixel>,
 }
 
-impl<'a> Iterator for Rays<'a> {
+impl Iterator for Rays<'_> {
     type Item = Ray<SensorFrame>;
     fn next(&mut self) -> Option<Self::Item> {
         let px = self.inner.next()?;
@@ -257,7 +262,7 @@ impl<'a> Iterator for Rays<'a> {
 }
 
 // All of RayIterator's functions are defined using Iterator.
-impl<'a> RayIterator<SensorFrame> for Rays<'a> {}
+impl RayIterator<SensorFrame> for Rays<'_> {}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct RayImage<Frame> {
@@ -273,6 +278,8 @@ impl<Frame> RayImage<Frame> {
         }
     }
 
+    ///
+    /// # Errors
     pub fn from_rays(
         rays: impl IntoIterator<Item = Option<Ray<Frame>>>,
         rows: usize,
@@ -282,14 +289,17 @@ impl<Frame> RayImage<Frame> {
         Ok(Self::from_matrix(matrix))
     }
 
+    #[must_use]
     pub fn rows(&self) -> usize {
         self.inner.rows()
     }
 
+    #[must_use]
     pub fn cols(&self) -> usize {
         self.inner.cols()
     }
 
+    #[must_use]
     pub fn ray(&self, row: usize, col: usize) -> Option<&Ray<Frame>> {
         self.inner.cell(row, col).as_ref()
     }
@@ -312,9 +322,9 @@ impl<Frame> RayImage<Frame> {
     {
         self.rays()
             .map(|pixel| {
-                pixel
-                    .map(|ray| Into::<Angle>::into(*ray.aop()).get::<degree>())
-                    .unwrap_or(f64::NAN)
+                pixel.map_or(f64::NAN, |ray| {
+                    Into::<Angle>::into(*ray.aop()).get::<degree>()
+                })
             })
             .flat_map(|value| color_map.map(value, -90.0, 90.0))
             .collect()
@@ -322,7 +332,7 @@ impl<Frame> RayImage<Frame> {
 
     pub fn dop_bytes<M: ColorMap>(&self, color_map: &M) -> Vec<u8> {
         self.rays()
-            .map(|pixel| pixel.map(|ray| Into::into(*ray.dop())).unwrap_or(f64::NAN))
+            .map(|pixel| pixel.map_or(f64::NAN, |ray| Into::into(*ray.dop())))
             .flat_map(|value| color_map.map(value, 0.0, 1.0))
             .collect()
     }
@@ -337,14 +347,17 @@ pub struct RayPixel<'a, Frame> {
 }
 
 impl<'a, Frame> RayPixel<'a, Frame> {
-    pub fn ray(&self) -> &Option<&'a Ray<Frame>> {
-        &self.ray
+    #[must_use]
+    pub fn ray(&self) -> Option<&'a Ray<Frame>> {
+        self.ray
     }
 
+    #[must_use]
     pub fn row(&self) -> usize {
         self.row
     }
 
+    #[must_use]
     pub fn col(&self) -> usize {
         self.col
     }
@@ -362,20 +375,15 @@ impl ColorMap for Jet {
         }
 
         let interval_width = max - min;
+
+        #[allow(clippy::cast_possible_truncation)]
+        #[allow(clippy::cast_sign_loss)]
         let x_norm = ((value - min) / interval_width * 255.).floor() as u8;
 
         let r = vec![
             255,
-            x_norm
-                .checked_sub(96)
-                .unwrap_or(u8::MIN)
-                .checked_mul(4)
-                .unwrap_or(u8::MAX),
-            255 - x_norm
-                .checked_sub(224)
-                .unwrap_or(u8::MIN)
-                .checked_mul(4)
-                .unwrap_or(u8::MAX),
+            x_norm.saturating_sub(96).saturating_mul(4),
+            255 - x_norm.saturating_sub(224).saturating_mul(4),
         ]
         .into_iter()
         .min()
@@ -383,16 +391,8 @@ impl ColorMap for Jet {
 
         let g = vec![
             255,
-            x_norm
-                .checked_sub(32)
-                .unwrap_or(u8::MIN)
-                .checked_mul(4)
-                .unwrap_or(u8::MAX),
-            255 - x_norm
-                .checked_sub(160)
-                .unwrap_or(u8::MIN)
-                .checked_mul(4)
-                .unwrap_or(u8::MAX),
+            x_norm.saturating_sub(32).saturating_mul(4),
+            255 - x_norm.saturating_sub(160).saturating_mul(4),
         ]
         .into_iter()
         .min()
@@ -400,16 +400,8 @@ impl ColorMap for Jet {
 
         let b = vec![
             255,
-            x_norm
-                .checked_add(127)
-                .unwrap_or(u8::MIN)
-                .checked_mul(4)
-                .unwrap_or(u8::MAX),
-            255 - x_norm
-                .checked_sub(96)
-                .unwrap_or(u8::MIN)
-                .checked_mul(4)
-                .unwrap_or(u8::MAX),
+            x_norm.saturating_add(127).saturating_mul(4),
+            255 - x_norm.saturating_sub(96).saturating_mul(4),
         ]
         .into_iter()
         .min()
@@ -433,7 +425,7 @@ mod tests {
         };
 
         assert_eq!(
-            matrix.cells().skip(3).next(),
+            matrix.cells().nth(3),
             Some(MatrixCell {
                 element: &elements[3],
                 row: 1,

@@ -38,9 +38,9 @@ impl Default for Dop {
     }
 }
 
-impl Into<f64> for Dop {
-    fn into(self) -> f64 {
-        self.inner
+impl From<Dop> for f64 {
+    fn from(dop: Dop) -> Self {
+        dop.inner
     }
 }
 
@@ -109,7 +109,7 @@ impl<Rhs: Into<f64>> Div<Rhs> for Dop {
     type Output = Self;
 
     fn div(self, rhs: Rhs) -> Self::Output {
-        Self::clamped(self.inner * rhs.into())
+        Self::clamped(self.inner / rhs.into())
     }
 }
 
