@@ -141,6 +141,9 @@ impl ImageSensor {
             && (0..self.cols).contains(&coord.as_ref().col())
     }
 
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::cast_precision_loss)]
+    #[allow(clippy::cast_sign_loss)]
     pub fn pixel_from_sensor(
         &self,
         coord: impl AsRef<SensorCoordinate>,
@@ -154,17 +157,26 @@ impl ImageSensor {
                 .round() as usize,
         );
 
-        if self.contains_pixel(result) { Some(result) } else { None }
+        if self.contains_pixel(result) {
+            Some(result)
+        } else {
+            None
+        }
     }
 
+    #[allow(clippy::cast_precision_loss)]
     pub fn sensor_from_pixel(
         &self,
         pixel: impl AsRef<PixelCoordinate>,
     ) -> Option<SensorCoordinate> {
-        if self.contains_pixel(&pixel) { Some(SensorCoordinate::new(
-            self.pixel_size * (pixel.as_ref().col() as f64 - (self.cols - 1) as f64 / 2.0),
-            -self.pixel_size * (pixel.as_ref().row() as f64 - (self.rows - 1) as f64 / 2.0),
-        )) } else { None }
+        if self.contains_pixel(&pixel) {
+            Some(SensorCoordinate::new(
+                self.pixel_size * (pixel.as_ref().col() as f64 - (self.cols - 1) as f64 / 2.0),
+                -self.pixel_size * (pixel.as_ref().row() as f64 - (self.rows - 1) as f64 / 2.0),
+            ))
+        } else {
+            None
+        }
     }
 
     fn pixels(&self) -> impl Iterator<Item = PixelCoordinate> {

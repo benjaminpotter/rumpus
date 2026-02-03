@@ -22,7 +22,7 @@ pub struct SkyModel<In> {
 
 impl<In> SkyModel<In> {
     /// Create a `SkyModel` from a `solar_bearing`.
-    #[must_use] 
+    #[must_use]
     pub fn from_solar_bearing(solar_bearing: Bearing<In>) -> Self {
         Self { solar_bearing }
     }
@@ -33,6 +33,10 @@ impl<In> SkyModel<In> {
     /// This function only produces a valid [`SkyModel`] if the origin of `In` is coincident with
     /// `position`. Otherwise, the model will interpret the solar bearing from `position`, but
     /// return results that interpret bearings from the origin of `In`.
+    ///
+    /// # Panics
+    /// Will panic if the latitude and longitude provided by `position` are not valid.
+    /// Since Wgs84 enforces valid `position`s this should not be a concern.
     pub unsafe fn from_position_and_time(
         position: impl Into<Wgs84>,
         time: impl Into<DateTime<Utc>>,
@@ -62,7 +66,7 @@ impl<In> SkyModel<In> {
     }
 
     /// Returns the [`Bearing`] towards the sun.
-    #[must_use] 
+    #[must_use]
     pub fn solar_bearing(&self) -> Bearing<In> {
         self.solar_bearing
     }
@@ -71,7 +75,7 @@ impl<In> SkyModel<In> {
     ///
     /// Returns `None` if `bearing` is below the horizon ie it has elevation
     /// less than zero.
-    #[must_use] 
+    #[must_use]
     pub fn aop(&self, bearing: Bearing<In>) -> Option<Aop<GlobalFrame>> {
         if bearing.elevation() < Angle::ZERO {
             return None;
@@ -92,7 +96,11 @@ impl<In> SkyModel<In> {
     ///
     /// Returns `None` if `bearing` is below the horizon ie it has elevation
     /// less than zero.
-    #[must_use] 
+    ///
+    /// # Panics
+    /// Will panic if the calculated [`Dop`] is out-of-bounds.
+    /// If the model is correct, this should never happen.
+    #[must_use]
     pub fn dop(&self, bearing: Bearing<In>) -> Option<Dop> {
         if bearing.elevation() < Angle::ZERO {
             return None;
@@ -109,7 +117,7 @@ impl<In> SkyModel<In> {
         let deg = max_dop * scattering_angle.sin().get::<ratio>().powf(2.0)
             / (1.0 + scattering_angle.cos().get::<ratio>().powf(2.0));
 
-        Some(Dop::new(deg).unwrap())
+        Some(Dop::try_new(deg).unwrap())
     }
 }
 
@@ -125,10 +133,11 @@ mod tests {
 
     quickcheck! {
         fn solar_meridian_ortho_aop(flip_azimuth: bool, elevation_seed: u8) -> bool {
-            let elevation = Angle::new::<degree>(elevation_seed as f64 * 90. / u8::MAX as f64);
-            let azimuth = match flip_azimuth {
-                true => Angle::new::<degree>(180.0),
-                false => Angle::new::<degree>(0.0),
+            let elevation = Angle::new::<degree>(f64::from(elevation_seed) * 90. / f64::from(u8::MAX));
+            let azimuth = if flip_azimuth {
+                Angle::new::<degree>(180.0)
+            } else {
+                Angle::new::<degree>(0.0)
             };
 
             relative_eq!(

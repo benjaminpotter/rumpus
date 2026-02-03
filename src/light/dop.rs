@@ -25,7 +25,9 @@ impl Dop {
     }
 
     /// Create a new `Dop` from `degree`.
-    #[must_use]
+    ///
+    /// # Errors
+    /// Will return `Err` if `degree` is outside of [0, 1].
     pub fn try_new(degree: f64) -> Result<Self, LightError> {
         if (0.0..=1.0).contains(&degree) {
             Ok(Self { inner: degree })

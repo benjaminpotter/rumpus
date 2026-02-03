@@ -20,8 +20,8 @@ pub struct Aop<Frame> {
 }
 
 impl<Frame> Aop<Frame> {
-    fn is_valid(angle: &Angle) -> bool {
-        (-Angle::HALF_TURN / 2.0..=Angle::HALF_TURN / 2.).contains(angle)
+    fn is_valid(angle: Angle) -> bool {
+        (-Angle::HALF_TURN / 2.0..=Angle::HALF_TURN / 2.).contains(&angle)
     }
 
     /// Creates a new `Aop` from `angle`.
@@ -30,7 +30,7 @@ impl<Frame> Aop<Frame> {
     #[must_use]
     #[deprecated]
     pub fn from_angle(angle: Angle) -> Option<Self> {
-        if !Self::is_valid(&angle) {
+        if !Self::is_valid(angle) {
             return None;
         }
 
@@ -41,9 +41,11 @@ impl<Frame> Aop<Frame> {
     }
 
     /// Creates a new `Aop` from `angle`.
-    #[must_use]
+    ///
+    /// # Errors
+    /// Will return `Err` if `angle` is outside of [-PI, PI].
     pub fn try_from_angle(angle: Angle) -> Result<Self, LightError> {
-        if Self::is_valid(&angle) {
+        if Self::is_valid(angle) {
             Ok(Self {
                 inner: angle,
                 _phan: std::marker::PhantomData,
@@ -65,7 +67,8 @@ impl<Frame> Aop<Frame> {
         }
 
         // Expect is enforced by the while loops above.
-        Self::from_angle(angle).expect("angle is within range -90 to 90")
+        #[allow(clippy::missing_panics_doc)]
+        Self::try_from_angle(angle).expect("angle is within range -90 to 90")
     }
 
     /// Returns true if `other` is within `thres` of `self` inclusive and
