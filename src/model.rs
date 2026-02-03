@@ -22,6 +22,7 @@ pub struct SkyModel<In> {
 
 impl<In> SkyModel<In> {
     /// Create a `SkyModel` from a `solar_bearing`.
+    #[must_use] 
     pub fn from_solar_bearing(solar_bearing: Bearing<In>) -> Self {
         Self { solar_bearing }
     }
@@ -61,6 +62,7 @@ impl<In> SkyModel<In> {
     }
 
     /// Returns the [`Bearing`] towards the sun.
+    #[must_use] 
     pub fn solar_bearing(&self) -> Bearing<In> {
         self.solar_bearing
     }
@@ -69,6 +71,7 @@ impl<In> SkyModel<In> {
     ///
     /// Returns `None` if `bearing` is below the horizon ie it has elevation
     /// less than zero.
+    #[must_use] 
     pub fn aop(&self, bearing: Bearing<In>) -> Option<Aop<GlobalFrame>> {
         if bearing.elevation() < Angle::ZERO {
             return None;
@@ -89,6 +92,7 @@ impl<In> SkyModel<In> {
     ///
     /// Returns `None` if `bearing` is below the horizon ie it has elevation
     /// less than zero.
+    #[must_use] 
     pub fn dop(&self, bearing: Bearing<In>) -> Option<Dop> {
         if bearing.elevation() < Angle::ZERO {
             return None;

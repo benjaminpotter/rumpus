@@ -12,6 +12,7 @@ pub struct Dop {
 
 impl Dop {
     /// Create a new `Dop` from `degree`.
+    #[must_use] 
     pub fn new(degree: f64) -> Option<Self> {
         if (0.0..=1.0).contains(&degree) {
             Some(Self { inner: degree })
@@ -20,6 +21,7 @@ impl Dop {
         }
     }
 
+    #[must_use] 
     pub fn clamped(degree: f64) -> Self {
         Self {
             inner: degree.clamp(0., 1.),
@@ -27,6 +29,7 @@ impl Dop {
     }
 
     /// Create a new `Dop` of zero.
+    #[must_use] 
     pub fn zero() -> Self {
         Self { inner: 0. }
     }

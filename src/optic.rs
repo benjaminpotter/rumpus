@@ -154,23 +154,17 @@ impl ImageSensor {
                 .round() as usize,
         );
 
-        match self.contains_pixel(result) {
-            true => Some(result),
-            false => None,
-        }
+        if self.contains_pixel(result) { Some(result) } else { None }
     }
 
     pub fn sensor_from_pixel(
         &self,
         pixel: impl AsRef<PixelCoordinate>,
     ) -> Option<SensorCoordinate> {
-        match self.contains_pixel(&pixel) {
-            true => Some(SensorCoordinate::new(
-                self.pixel_size * (pixel.as_ref().col() as f64 - (self.cols - 1) as f64 / 2.0),
-                -self.pixel_size * (pixel.as_ref().row() as f64 - (self.rows - 1) as f64 / 2.0),
-            )),
-            false => None,
-        }
+        if self.contains_pixel(&pixel) { Some(SensorCoordinate::new(
+            self.pixel_size * (pixel.as_ref().col() as f64 - (self.cols - 1) as f64 / 2.0),
+            -self.pixel_size * (pixel.as_ref().row() as f64 - (self.rows - 1) as f64 / 2.0),
+        )) } else { None }
     }
 
     fn pixels(&self) -> impl Iterator<Item = PixelCoordinate> {

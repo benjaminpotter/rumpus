@@ -28,6 +28,7 @@ pub struct Ray<Frame> {
 
 impl<Frame> Ray<Frame> {
     /// Creates a new `Ray` from a polarization `angle` and `degree`.
+    #[must_use] 
     pub fn new(angle: Aop<Frame>, degree: Dop) -> Self {
         Self {
             angle,
@@ -36,28 +37,33 @@ impl<Frame> Ray<Frame> {
         }
     }
 
+    #[must_use] 
     pub fn from_stokes(stokes: StokesVec<Frame>) -> Self {
         Self::new(stokes.aop(), stokes.dop())
     }
 
+    #[must_use] 
     pub fn aop(&self) -> &Aop<Frame> {
         &self.angle
     }
 
+    #[must_use] 
     pub fn dop(&self) -> &Dop {
         &self.degree
     }
 }
 
 impl Ray<GlobalFrame> {
-    /// Transforms the Ray from the GlobalFrame into the SensorFrame.
+    /// Transforms the Ray from the `GlobalFrame` into the `SensorFrame`.
+    #[must_use] 
     pub fn into_sensor_frame(self, shift: Angle) -> Ray<SensorFrame> {
         Ray::new(self.angle.into_sensor_frame(shift), self.degree)
     }
 }
 
 impl Ray<SensorFrame> {
-    /// Transforms the Ray from the SensorFrame into the GlobalFrame.
+    /// Transforms the Ray from the `SensorFrame` into the `GlobalFrame`.
+    #[must_use] 
     pub fn into_global_frame(self, shift: Angle) -> Ray<GlobalFrame> {
         Ray::new(self.angle.into_global_frame(shift), self.degree)
     }

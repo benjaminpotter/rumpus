@@ -24,6 +24,7 @@ impl<Frame> Aop<Frame> {
     /// Creates a new `Aop` from `angle`.
     ///
     /// Returns `None` if `angle` is not between -90 and 90.
+    #[must_use] 
     pub fn from_angle(angle: Angle) -> Option<Self> {
         if !Self::is_valid(&angle) {
             return None;
@@ -36,6 +37,7 @@ impl<Frame> Aop<Frame> {
     }
 
     /// Creates a new `Aop` from `angle` wrapping into -90.0 and 90.0 to be wrapped.
+    #[must_use] 
     pub fn from_angle_wrapped(mut angle: Angle) -> Self {
         while angle > Angle::HALF_TURN / 2. {
             angle -= Angle::HALF_TURN;
@@ -51,6 +53,7 @@ impl<Frame> Aop<Frame> {
 
     /// Returns true if `other` is within `thres` of `self` inclusive and
     /// handling wrapping.
+    #[must_use] 
     pub fn in_thres(&self, other: &Aop<Frame>, thres: Angle) -> bool
     where
         Frame: Copy,
@@ -60,7 +63,8 @@ impl<Frame> Aop<Frame> {
 }
 
 impl Aop<GlobalFrame> {
-    /// Transforms the `Aop` from the GlobalFrame into the SensorFrame.
+    /// Transforms the `Aop` from the `GlobalFrame` into the `SensorFrame`.
+    #[must_use] 
     pub fn into_sensor_frame(self, shift: Angle) -> Aop<SensorFrame> {
         // FIXME: This might need to be flipped.
         Aop::from_angle_wrapped(self.inner + shift)
@@ -68,7 +72,8 @@ impl Aop<GlobalFrame> {
 }
 
 impl Aop<SensorFrame> {
-    /// Transforms the `Aop` from the SensorFrame into the GlobalFrame.
+    /// Transforms the `Aop` from the `SensorFrame` into the `GlobalFrame`.
+    #[must_use] 
     pub fn into_global_frame(self, shift: Angle) -> Aop<GlobalFrame> {
         // FIXME: This might need to be flipped.
         Aop::from_angle_wrapped(self.inner - shift)
@@ -99,13 +104,7 @@ impl<Frame> std::ops::Sub for Aop<Frame> {
 
 impl<Frame> std::cmp::PartialEq for Aop<Frame> {
     fn eq(&self, other: &Aop<Frame>) -> bool {
-        match self.inner.abs() == Angle::HALF_TURN / 2.
-            && other.inner.abs() == Angle::HALF_TURN / 2.
-        {
-            // Handle the case that -90 is the same as 90.
-            true => true,
-            false => self.inner == other.inner,
-        }
+        if self.inner.abs() == Angle::HALF_TURN / 2. && other.inner.abs() == Angle::HALF_TURN / 2. { true } else { self.inner == other.inner }
     }
 }
 
