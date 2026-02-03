@@ -13,7 +13,7 @@ use uom::si::f64::Angle;
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Aop<Frame: RayFrame> {
     /// The angle of the e-vector of the ray.
-    angle: Angle,
+    inner: Angle,
     _phan: std::marker::PhantomData<Frame>,
 }
 
@@ -21,21 +21,25 @@ impl<Frame: RayFrame> Deref for Aop<Frame> {
     type Target = Angle;
 
     fn deref(&self) -> &Self::Target {
-        &self.angle
+        &self.inner
     }
 }
 
 impl<Frame: RayFrame> Aop<Frame> {
+    fn is_valid(angle: &Angle) -> bool {
+        (-Angle::HALF_TURN / 2.0..=Angle::HALF_TURN / 2.).contains(angle)
+    }
+
     /// Creates a new `Aop` from `angle`.
     ///
     /// Returns `None` if `angle` is not between -90 and 90.
     pub fn from_angle(angle: Angle) -> Option<Self> {
-        if !is_valid(angle) {
+        if !Self::is_valid(&angle) {
             return None;
         }
 
         Some(Self {
-            angle,
+            inner: angle,
             _phan: std::marker::PhantomData,
         })
     }
@@ -57,34 +61,27 @@ impl<Frame: RayFrame> Aop<Frame> {
     /// Returns true if `other` is within `thres` of `self` inclusive and
     /// handling wrapping.
     pub fn in_thres(&self, other: &Aop<Frame>, thres: Angle) -> bool {
-        (*self - *other).angle.abs() <= thres
+        (*self - *other).inner.abs() <= thres
     }
-
-    pub fn angle(&self) -> Angle {
-        self.angle
-    }
-
-    pub fn into_inner(self) -> Angle {
-        self.angle
-    }
-}
-
-/// Returns `true` if `angle` is between -90 and 90, `false` otherwise.
-fn is_valid(angle: Angle) -> bool {
-    -Angle::HALF_TURN / 2. <= angle && angle <= Angle::HALF_TURN / 2.
 }
 
 impl Aop<GlobalFrame> {
     /// Transforms the `Aop` from the GlobalFrame into the SensorFrame.
     pub fn into_sensor_frame(self, shift: Angle) -> Aop<SensorFrame> {
-        Aop::from_angle_wrapped(self.angle + shift)
+        Aop::from_angle_wrapped(self.inner + shift)
     }
 }
 
 impl Aop<SensorFrame> {
     /// Transforms the `Aop` from the SensorFrame into the GlobalFrame.
     pub fn into_global_frame(self, shift: Angle) -> Aop<GlobalFrame> {
-        Aop::from_angle_wrapped(self.angle - shift)
+        Aop::from_angle_wrapped(self.inner - shift)
+    }
+}
+
+impl<Frame: RayFrame> Into<Angle> for Aop<Frame> {
+    fn into(self) -> Angle {
+        self.inner
     }
 }
 
@@ -92,7 +89,7 @@ impl<Frame: RayFrame> std::ops::Add for Aop<Frame> {
     type Output = Self;
 
     fn add(self, other: Self) -> Self::Output {
-        Self::from_angle_wrapped(self.angle + other.angle)
+        Self::from_angle_wrapped(self.inner + other.inner)
     }
 }
 
@@ -100,18 +97,18 @@ impl<Frame: RayFrame> std::ops::Sub for Aop<Frame> {
     type Output = Self;
 
     fn sub(self, other: Self) -> Self::Output {
-        Self::from_angle_wrapped(self.angle - other.angle)
+        Self::from_angle_wrapped(self.inner - other.inner)
     }
 }
 
 impl<Frame: RayFrame> std::cmp::PartialEq for Aop<Frame> {
     fn eq(&self, other: &Aop<Frame>) -> bool {
-        match self.angle.abs() == Angle::HALF_TURN / 2.
-            && other.angle.abs() == Angle::HALF_TURN / 2.
+        match self.inner.abs() == Angle::HALF_TURN / 2.
+            && other.inner.abs() == Angle::HALF_TURN / 2.
         {
             // Handle the case that -90 is the same as 90.
             true => true,
-            false => self.angle == other.angle,
+            false => self.inner == other.inner,
         }
     }
 }
@@ -151,7 +148,7 @@ mod tests {
     #[case(a(90.0), a(-89.0), a(1.0))]
     fn add_aop(#[case] lhs: Angle, #[case] rhs: Angle, #[case] sum: Angle) {
         let result = Aop::<GlobalFrame>::from_angle(lhs).unwrap() + Aop::from_angle(rhs).unwrap();
-        assert_relative_eq!(result.into_inner().get::<radian>(), sum.get::<radian>(),);
+        assert_relative_eq!(result.inner.get::<radian>(), sum.get::<radian>(),);
     }
 
     #[rstest]
@@ -160,7 +157,7 @@ mod tests {
     #[case(a(-90.0), a(-90.0), a(0.0))]
     fn sub_aop(#[case] lhs: Angle, #[case] rhs: Angle, #[case] dif: Angle) {
         let result = Aop::<GlobalFrame>::from_angle(lhs).unwrap() - Aop::from_angle(rhs).unwrap();
-        assert_relative_eq!(result.into_inner().get::<radian>(), dif.get::<radian>());
+        assert_relative_eq!(result.inner.get::<radian>(), dif.get::<radian>());
     }
 
     #[rstest]
@@ -194,7 +191,7 @@ mod tests {
             Aop::<SensorFrame>::from_angle_wrapped(angle)
                 .into_global_frame(offset.clone())
                 .into_sensor_frame(offset)
-                .into_inner()
+                .inner
                 .get::<radian>(),
             angle.get::<radian>(),
         );

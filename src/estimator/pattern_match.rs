@@ -80,7 +80,7 @@ impl<S: Searcher> Estimator<SensorFrame> for PatternMatch<S> {
                         // Compute the weighted, squared difference between the
                         // modelled ray and the measured ray.
                         let delta = *ray.aop() - *modelled_ray_sensor.aop();
-                        let sq_diff = delta.into_inner().get::<radian>().powf(2.);
+                        let sq_diff = Into::<Angle>::into(delta).get::<radian>().powf(2.);
                         let weight = 1. / *ray.dop();
                         let weighted_sq_diff = weight * sq_diff;
 

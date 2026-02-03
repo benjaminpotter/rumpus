@@ -111,7 +111,7 @@ mod tests {
             };
 
             relative_eq!(
-                SkyModel::from_solar_bearing(
+                Into::<Angle>::into(SkyModel::from_solar_bearing(
                     Bearing::<CameraEnu>::builder()
                         .azimuth(Angle::new::<degree>(0.0))
                         .elevation(Angle::new::<degree>(45.0))
@@ -125,8 +125,7 @@ mod tests {
                         .expect("elevation should be on the range -90 to 90")
                         .build(),
                 )
-                .expect("bearing is above the horizon")
-                .into_inner()
+                .expect("bearing is above the horizon"))
                 .get::<degree>()
                 .abs(),
                 90.0

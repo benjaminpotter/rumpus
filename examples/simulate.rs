@@ -67,7 +67,7 @@ fn main() {
     let aop_image: Vec<u8> = ray_image
         .pixels()
         .flat_map(|pixel| match pixel {
-            Some(ray) => to_rgb(ray.aop().angle().get::<degree>(), -90.0, 90.0)
+            Some(ray) => to_rgb(Into::<Angle>::into(*ray.aop()).get::<degree>(), -90.0, 90.0)
                 .expect("aop in between -90 and 90"),
             None => [255, 255, 255],
         })
