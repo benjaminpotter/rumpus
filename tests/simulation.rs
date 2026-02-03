@@ -65,7 +65,7 @@ fn ray_image() -> RayImage<GlobalFrame> {
         time.parse::<DateTime<Utc>>()
             .expect("valid datetime string"),
     )
-    .ray_image()
+    .par_ray_image()
 }
 
 #[test]
