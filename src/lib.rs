@@ -3,6 +3,7 @@
 //! Skylight Polarization Utilities
 
 pub mod error;
+pub mod estimate;
 pub mod filter;
 pub mod image;
 pub mod iter;
