@@ -320,7 +320,7 @@ impl<Frame> RayImage<Frame> {
     pub fn aop_bytes<M>(&self, color_map: &M) -> Vec<u8>
     where
         Frame: Copy,
-        M: ColorMap,
+        M: RayMap,
         M::Output: IntoIterator<Item = u8>,
     {
         self.rays()
@@ -331,7 +331,7 @@ impl<Frame> RayImage<Frame> {
 
     pub fn dop_bytes<M>(&self, color_map: &M) -> Vec<u8>
     where
-        M: ColorMap,
+        M: RayMap,
         M::Output: IntoIterator<Item = u8>,
     {
         self.rays()
@@ -366,14 +366,14 @@ impl<'a, Frame> RayPixel<'a, Frame> {
     }
 }
 
-pub trait ColorMap {
+pub trait RayMap {
     type Output;
 
     fn map(&self, value: f64, min: f64, max: f64) -> Self::Output;
 }
 
 pub struct Jet;
-impl ColorMap for Jet {
+impl RayMap for Jet {
     type Output = [u8; 3];
 
     fn map(&self, value: f64, min: f64, max: f64) -> Self::Output {
@@ -415,6 +415,36 @@ impl ColorMap for Jet {
         .unwrap();
 
         [r, g, b]
+    }
+}
+
+pub struct Gray;
+impl RayMap for Gray {
+    type Output = [u8; 1];
+
+    fn map(&self, value: f64, min: f64, max: f64) -> Self::Output {
+        if value < min {
+            return [0];
+        } else if value > max {
+            return [255];
+        }
+
+        let interval_width = max - min;
+
+        #[allow(clippy::cast_possible_truncation)]
+        #[allow(clippy::cast_sign_loss)]
+        let x_norm = ((value - min) / interval_width * 255.).floor() as u8;
+
+        [x_norm]
+    }
+}
+
+pub struct Binary;
+impl RayMap for Binary {
+    type Output = [u8; 8];
+
+    fn map(&self, value: f64, _min: f64, _max: f64) -> Self::Output {
+        value.to_be_bytes()
     }
 }
 
