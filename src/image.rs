@@ -317,9 +317,11 @@ impl<Frame> RayImage<Frame> {
         })
     }
 
-    pub fn aop_bytes<M: ColorMap>(&self, color_map: &M) -> Vec<u8>
+    pub fn aop_bytes<M>(&self, color_map: &M) -> Vec<u8>
     where
         Frame: Copy,
+        M: ColorMap,
+        M::Output: IntoIterator<Item = u8>,
     {
         self.rays()
             .map(|pixel| pixel.map_or(f64::NAN, |ray| Angle::from(ray.aop()).get::<degree>()))
@@ -327,7 +329,11 @@ impl<Frame> RayImage<Frame> {
             .collect()
     }
 
-    pub fn dop_bytes<M: ColorMap>(&self, color_map: &M) -> Vec<u8> {
+    pub fn dop_bytes<M>(&self, color_map: &M) -> Vec<u8>
+    where
+        M: ColorMap,
+        M::Output: IntoIterator<Item = u8>,
+    {
         self.rays()
             .map(|pixel| pixel.map_or(f64::NAN, |ray| f64::from(ray.dop())))
             .flat_map(|value| color_map.map(value, 0.0, 1.0))
@@ -361,12 +367,16 @@ impl<'a, Frame> RayPixel<'a, Frame> {
 }
 
 pub trait ColorMap {
-    fn map(&self, value: f64, min: f64, max: f64) -> [u8; 3];
+    type Output;
+
+    fn map(&self, value: f64, min: f64, max: f64) -> Self::Output;
 }
 
 pub struct Jet;
 impl ColorMap for Jet {
-    fn map(&self, value: f64, min: f64, max: f64) -> [u8; 3] {
+    type Output = [u8; 3];
+
+    fn map(&self, value: f64, min: f64, max: f64) -> Self::Output {
         if value < min || value > max {
             return [255, 255, 255];
         }
