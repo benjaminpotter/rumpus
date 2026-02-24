@@ -231,6 +231,12 @@ impl RayDirection {
     }
 }
 
+impl AsRef<RayDirection> for RayDirection {
+    fn as_ref(&self) -> &RayDirection {
+        self
+    }
+}
+
 pub trait Optic {
     fn trace_backward(&self, coord: &SensorCoordinate) -> RayDirection;
     fn trace_forward(&self, bearing: &RayDirection) -> SensorCoordinate;
