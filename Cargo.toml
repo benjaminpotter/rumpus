@@ -8,6 +8,7 @@ readme = "README.md"
 keywords = ["skylight_polarization", "raytrace", "navigation", "image"]
 version = "0.5.3"
 edition = "2024"
+exclude = ["tests/snapshots/*"]
 
 [dependencies]
 rayon = "1.10.0"
