@@ -341,8 +341,6 @@ impl<Frame> RayImage<Frame> {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct RayPixel<'a, Frame> {
     ray: Option<&'a Ray<Frame>>,
     row: usize,
