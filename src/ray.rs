@@ -1,4 +1,4 @@
-use crate::light::{LightError, aop::Aop, dop::Dop, stokes::StokesVec};
+use crate::light::{LightError, aop::Aop, dop::Dop, stokes::Stokes};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -74,10 +74,10 @@ impl Ray<SensorFrame> {
     }
 }
 
-impl<Frame> TryFrom<StokesVec<Frame>> for Ray<Frame> {
+impl<Frame> TryFrom<Stokes<Frame>> for Ray<Frame> {
     type Error = RayError;
 
-    fn try_from(stokes: StokesVec<Frame>) -> Result<Self, Self::Error> {
+    fn try_from(stokes: Stokes<Frame>) -> Result<Self, Self::Error> {
         Ok(Self::new(stokes.aop()?, stokes.dop()?))
     }
 }

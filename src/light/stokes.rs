@@ -3,18 +3,30 @@ use uom::si::{angle::radian, f64::Angle};
 
 /// Describes the linear polarization of a ray.
 #[derive(Debug, PartialEq)]
-pub struct StokesVec<Frame> {
+pub struct Stokes<Frame> {
     inner: [f64; 3],
     _phan: std::marker::PhantomData<Frame>,
 }
 
-impl<Frame> StokesVec<Frame> {
+impl<Frame> Stokes<Frame> {
     #[must_use]
     pub fn new(s0: f64, s1: f64, s2: f64) -> Self {
-        StokesVec {
+        Stokes {
             inner: [s0, s1, s2],
             _phan: std::marker::PhantomData,
         }
+    }
+
+    pub fn s0(&self) -> f64 {
+        self.inner[0]
+    }
+
+    pub fn s1(&self) -> f64 {
+        self.inner[1]
+    }
+
+    pub fn s2(&self) -> f64 {
+        self.inner[2]
     }
 
     /// Compute the `AoP` of the ray.

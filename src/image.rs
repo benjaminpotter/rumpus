@@ -1,6 +1,5 @@
 use crate::{
-    iter::RayIterator,
-    light::stokes::StokesVec,
+    light::stokes::Stokes,
     ray::{Ray, SensorFrame},
 };
 use rayon::prelude::*;
@@ -120,22 +119,22 @@ impl<'a, T> Iterator for Cells<'a, T> {
     }
 }
 
+/// A metapixel is a group of four pixels that have two sets of orthogonal linear polarizing filters.
+/// Each element in this buffer stores an intensity value in 0, 45, 90, 135 order.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct IntensityPixel {
-    /// A metapixel is a group of four intensity pixels that have two sets of orthogonal linear polarizing filters.
-    /// Each element in this buffer stores an intensity value in 0, 45, 90, 135 order.
+pub struct MetaPixel {
     inner: [f64; 4],
 }
 
-impl IntensityPixel {
+impl MetaPixel {
     /// The Stokes vectors are computed by:
     /// ```text
     /// S_0 = (I_0 + I_45 + I_90 + I_135) / 2
     /// S_1 = I_0 - I_90
     /// S_2 = I_45 - I_135
     /// ```
-    fn stokes(&self) -> StokesVec<SensorFrame> {
-        StokesVec::new(
+    pub fn stokes(&self) -> Stokes<SensorFrame> {
+        Stokes::new(
             (self.inner[0] + self.inner[1] + self.inner[2] + self.inner[3]) / 2.,
             self.inner[0] - self.inner[2],
             self.inner[1] - self.inner[3],
@@ -150,10 +149,7 @@ impl IntensityPixel {
 /// the polarization state of incident rays.
 #[derive(Clone, Debug, PartialEq)]
 pub struct IntensityImage {
-    /// Buffer of metapixels.
-    metapixels: Vec<IntensityPixel>,
-    width: usize,
-    height: usize,
+    inner: Matrix<MetaPixel>,
 }
 
 impl IntensityImage {
@@ -202,7 +198,7 @@ impl IntensityImage {
             .flat_map(|y| (0..meta_width).map(move |x| (x, y)))
             .collect();
 
-        let metapixels: Vec<IntensityPixel> = coords
+        let metapixels: Vec<MetaPixel> = coords
             .into_par_iter()
             .map(|(x, y)| {
                 let i000 = (x * 2 + 1) + (y * 2 + 1) * width;
@@ -211,7 +207,7 @@ impl IntensityImage {
                 let i135 = (x * 2 + 1) + (y * 2) * width;
 
                 // FIXME: Catch problems with the size of `bytes`.
-                IntensityPixel {
+                MetaPixel {
                     inner: [
                         f64::from(bytes[i000]),
                         f64::from(bytes[i045]),
@@ -223,52 +219,48 @@ impl IntensityImage {
             .collect();
 
         Ok(Self {
-            metapixels,
-            width: meta_width,
-            height: meta_height,
+            inner: Matrix::from_elements(metapixels, meta_height, meta_width)?,
         })
     }
 
     #[must_use]
-    pub fn width(&self) -> usize {
-        self.width
+    pub fn rows(&self) -> usize {
+        self.inner.rows()
     }
 
     #[must_use]
-    pub fn height(&self) -> usize {
-        self.height
+    pub fn cols(&self) -> usize {
+        self.inner.cols()
     }
 
     #[must_use]
-    pub fn rays(&self) -> Rays<'_> {
-        Rays {
-            inner: self.metapixels.iter(),
-        }
+    pub fn metapixels(&self) -> impl Iterator<Item = &MetaPixel> {
+        self.inner.iter()
     }
 }
-
-/// An iterator over rays.
-#[derive(Clone, Debug)]
-pub struct Rays<'a> {
-    inner: std::slice::Iter<'a, IntensityPixel>,
-}
-
-impl Iterator for Rays<'_> {
-    type Item = Ray<SensorFrame>;
-    fn next(&mut self) -> Option<Self::Item> {
-        let px = self.inner.next()?;
-        // TODO: Might want to propagate this error..
-        Ray::try_from(px.stokes()).ok()
-    }
-}
-
-// All of RayIterator's functions are defined using Iterator.
-impl RayIterator<SensorFrame> for Rays<'_> {}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct RayImage<Frame> {
     inner: Matrix<Option<Ray<Frame>>>,
     _phan: std::marker::PhantomData<Frame>,
+}
+
+impl RayImage<SensorFrame> {
+    ///
+    /// # Errors
+    pub fn from_metapixels<'a>(
+        metapixels: impl IntoIterator<Item = &'a MetaPixel>,
+        rows: usize,
+        cols: usize,
+    ) -> Result<Self, ImageError> {
+        Self::from_rays(
+            metapixels
+                .into_iter()
+                .map(|mpx| Ray::try_from(mpx.stokes()).ok()),
+            rows,
+            cols,
+        )
+    }
 }
 
 impl<Frame> RayImage<Frame> {
