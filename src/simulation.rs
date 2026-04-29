@@ -83,6 +83,7 @@ impl<O> Simulation<O> {
         Some(Ray::new(
             self.model.aop(bearing_sim)?,
             self.model.dop(bearing_sim)?,
+            1., // TODO: this needs to be simulated
         ))
     }
 

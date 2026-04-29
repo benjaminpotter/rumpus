@@ -331,6 +331,31 @@ impl<Frame> RayImage<Frame> {
             .flat_map(|value| color_map.map(value, 0.0, 1.0))
             .collect()
     }
+
+    /// Apply a map from the intensity of each [`Ray`] to a sequence of bytes.
+    ///
+    /// Will dynamically adjust the upper bound of the mapping using the largest intensity.
+    /// This implies there are two passes through the image to (1) find the largest intensity and
+    /// (2) compute the mapped values.
+    pub fn intensity_bytes<M>(&self, color_map: &M) -> Vec<u8>
+    where
+        Frame: Copy,
+        M: RayMap,
+        M::Output: IntoIterator<Item = u8>,
+    {
+        let mut max = f64::MIN;
+        for ray in self.rays().flatten() {
+            let intensity = ray.intensity();
+            if intensity > max {
+                max = intensity;
+            }
+        }
+
+        self.rays()
+            .map(|pixel| pixel.map_or(f64::NAN, |ray| ray.intensity()))
+            .flat_map(|value| color_map.map(value, 0., max))
+            .collect()
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

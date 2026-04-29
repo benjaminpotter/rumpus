@@ -56,6 +56,9 @@ fn binary_works() {
 
     let bytes = ray_image.dop_bytes(&Binary);
     insta::assert_binary_snapshot!("binary_dop.bin", bytes);
+
+    let bytes = ray_image.intensity_bytes(&Binary);
+    insta::assert_binary_snapshot!("binary_intensity.bin", bytes);
 }
 
 #[test]
@@ -122,6 +125,19 @@ fn gray_works() {
     .unwrap();
 
     insta::assert_binary_snapshot!("gray_dop.png", png_bytes);
+
+    let mut png_bytes: Vec<u8> = Vec::new();
+    image::write_buffer_with_format(
+        &mut Cursor::new(&mut png_bytes),
+        &ray_image.intensity_bytes(&Gray),
+        ray_image.cols() as u32,
+        ray_image.rows() as u32,
+        image::ExtendedColorType::L8,
+        image::ImageFormat::Png,
+    )
+    .unwrap();
+
+    insta::assert_binary_snapshot!("gray_intensity.png", png_bytes);
 }
 
 #[test]

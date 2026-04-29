@@ -1,0 +1,6 @@
+---
+source: tests/parse_intensity.rs
+expression: bytes
+extension: bin
+snapshot_kind: binary
+---
