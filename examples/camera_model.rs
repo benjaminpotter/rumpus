@@ -1,6 +1,8 @@
 //! Show different camera models.
 //!
 
+use std::f64::consts::TAU;
+
 use rumpus::optic::{Camera, Optic, PinholeOptic, PixelCoordinate, RayDirection};
 use uom::si::{
     angle::radian,
@@ -40,12 +42,22 @@ fn camera_with_optic<O: Optic>(optic: O) -> Camera<O> {
 }
 
 fn pixels_of_interest() -> Vec<PixelCoordinate> {
-    vec![
-        PixelCoordinate::new(0, 0),
-        PixelCoordinate::new(100, 0),
-        PixelCoordinate::new(0, 100),
-        PixelCoordinate::new(100, 100),
-    ]
+    let mut result = Vec::new();
+    let row_off = 512.;
+    let col_off = 612.;
+    let samples_per_rev = 50;
+    for r in vec![10., 100., 500.] {
+        for sample in 0..samples_per_rev {
+            let norm_sample = sample as f64 / samples_per_rev as f64;
+            let angle = TAU * norm_sample;
+            let row = (angle.sin() * r).round() + row_off;
+            let col = (angle.cos() * r).round() + col_off;
+
+            result.push(PixelCoordinate::new(row as usize, col as usize));
+        }
+    }
+
+    result
 }
 
 fn intersect(ray: RayDirection) -> (f64, f64) {

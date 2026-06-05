@@ -11,7 +11,7 @@ use sguaba::{
     engineering::Pose,
     math::{RigidBodyTransform, Rotation},
     system,
-    systems::{BearingDefined, Ecef},
+    systems::{BearingDefined, Ecef, EquivalentTo},
 };
 use uom::si::f64::Angle;
 
