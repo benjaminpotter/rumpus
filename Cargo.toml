@@ -11,20 +11,20 @@ edition = "2024"
 exclude = ["tests/snapshots/*"]
 
 [dependencies]
-rayon = "1.10.0"
-spa = "0.5.1"
-sguaba = "0.9.4"
-uom = "0.37.0"
-thiserror = "2.0.17"
-chrono = "0.4.41"
+rayon = "1.10"
+spa = "0.5"
+sguaba = "0.9"
+uom = "0.37"
+thiserror = "2.0"
+chrono = "0.4"
 
 [dev-dependencies]
-image = { version="0.25.6", features=["rayon"] }
-quickcheck = "1.0.3"
-quickcheck_macros = "1.1.0"
-rstest = "0.26.1"
-approx = "0.5.1"
-insta = "1.46.1"
+image = { version="0.25", features=["rayon"] }
+quickcheck = "1.0"
+quickcheck_macros = "1.1"
+rstest = "0.26"
+approx = "0.5"
+insta = "1.46"
 anyhow = "1.0"
 criterion = { version = "0.8", features = ["html_reports"] }
 
