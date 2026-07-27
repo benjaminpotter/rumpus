@@ -2,9 +2,8 @@
 
 [![Crates.io](https://img.shields.io/crates/v/rumpus.svg)](https://crates.io/crates/rumpus)
 [![Docs.rs](https://docs.rs/rumpus/badge.svg)](https://docs.rs/rumpus)
-[![CI](https://github.com/benjaminpotter/rumpus/actions/workflows/ci.yml/badge.svg)](https://github.com/benjaminpotter/rumpus/actions)
 
-This project provides a framework for working with skylight polarization for navigation.
+This project provides a framework for using skylight polarization for navigation.
 
 ---
 
