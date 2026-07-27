@@ -16,11 +16,10 @@ pub enum ImageError {
     },
 
     #[error(
-        "intensity image reader requires even numbered image dimensions: found {}x{}",
-        width,
-        height
+        "intensity image reader requires even numbered image dimensions: found {}",
+        dimension
     )]
-    InvalidDimensions { width: usize, height: usize },
+    OddDimension { dimension: usize },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -187,12 +186,26 @@ impl IntensityImage {
     ///
     /// # Errors
     pub fn from_bytes(width: usize, height: usize, bytes: &[u8]) -> Result<Self, ImageError> {
+        // --------------
+        // PRECONDITIONS:
+        // - width and height are even (since they represent metapixels)
+        // - length of bytes matches the provided dimensions
+
         let meta_width = width
             .checked_div(2)
-            .ok_or(ImageError::InvalidDimensions { width, height })?;
+            .ok_or(ImageError::OddDimension { dimension: width })?;
         let meta_height = height
             .checked_div(2)
-            .ok_or(ImageError::InvalidDimensions { width, height })?;
+            .ok_or(ImageError::OddDimension { dimension: height })?;
+
+        if bytes.len() != width * height {
+            return Err(ImageError::SizeMismatch {
+                rows: height,
+                cols: width,
+                len: bytes.len(),
+            });
+        }
+        // --------------
 
         let coords: Vec<(usize, usize)> = (0..meta_height)
             .flat_map(|y| (0..meta_width).map(move |x| (x, y)))
@@ -206,7 +219,6 @@ impl IntensityImage {
                 let i090 = (x * 2) + (y * 2) * width;
                 let i135 = (x * 2 + 1) + (y * 2) * width;
 
-                // FIXME: Catch problems with the size of `bytes`.
                 MetaPixel {
                     inner: [
                         f64::from(bytes[i000]),
