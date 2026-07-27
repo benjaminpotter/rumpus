@@ -52,7 +52,7 @@ impl<T> Matrix<T> {
         self.elements.iter()
     }
 
-    fn cells(&self) -> Cells<'_, T> {
+    fn cells(&self) -> Cells<std::slice::Iter<'_, T>> {
         Cells::new(&self.elements, self.rows, self.cols)
     }
 
@@ -73,8 +73,8 @@ impl<T> Matrix<T> {
     }
 }
 
-struct Cells<'a, T> {
-    elements: std::vec::IntoIter<&'a T>,
+struct Cells<I> {
+    elements: I,
     index: usize,
     rows: usize,
     cols: usize,
@@ -87,9 +87,11 @@ struct MatrixCell<'a, T> {
     col: usize,
 }
 
-impl<'a, T> Cells<'a, T> {
-    fn new(elements: impl IntoIterator<Item = &'a T>, rows: usize, cols: usize) -> Self {
-        let elements: Vec<_> = elements.into_iter().collect();
+impl<I> Cells<I> {
+    fn new(elements: impl IntoIterator<IntoIter = I>, rows: usize, cols: usize) -> Self
+    where
+        I: Iterator,
+    {
         Self {
             elements: elements.into_iter(),
             index: 0,
@@ -99,7 +101,10 @@ impl<'a, T> Cells<'a, T> {
     }
 }
 
-impl<'a, T> Iterator for Cells<'a, T> {
+impl<'a, T: 'a, I> Iterator for Cells<I>
+where
+    I: Iterator<Item = &'a T>,
+{
     type Item = MatrixCell<'a, T>;
 
     fn next(&mut self) -> Option<Self::Item> {
