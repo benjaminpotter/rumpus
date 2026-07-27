@@ -102,7 +102,6 @@ impl<In> SkyModel<In> {
             return None;
         }
 
-        let max_dop = 1.0;
         let solar_azimuth = self.solar_bearing.azimuth();
         let solar_zenith = Angle::HALF_TURN / 2. - self.solar_bearing.elevation();
         let azimuth = bearing.azimuth();
@@ -110,8 +109,20 @@ impl<In> SkyModel<In> {
         let scattering_angle = (zenith.cos() * solar_zenith.cos()
             + zenith.sin() * solar_zenith.sin() * (azimuth - solar_azimuth).cos())
         .acos();
-        let deg = max_dop * scattering_angle.sin().get::<ratio>().powf(2.0)
-            / (1.0 + scattering_angle.cos().get::<ratio>().powf(2.0));
+
+        SkyModel::<In>::dop_from_scattering_angle(scattering_angle)
+    }
+
+    /// Implement Rayleigh model prediction for [`Dop`] given a scattering angle.
+    ///
+    /// # Panics
+    /// Will panic if the calculated [`Dop`] is out-of-bounds.
+    /// If the model is correct, this should never happen.
+    #[must_use]
+    fn dop_from_scattering_angle(angle: Angle) -> Option<Dop> {
+        let max_dop = 1.0;
+        let deg = max_dop * angle.sin().get::<ratio>().powf(2.0)
+            / (1.0 + angle.cos().get::<ratio>().powf(2.0));
 
         Some(Dop::try_new(deg).unwrap())
     }
@@ -122,6 +133,7 @@ mod tests {
     use super::*;
     use approx::relative_eq;
     use quickcheck::quickcheck;
+    use rstest::rstest;
     use sguaba::system;
     use uom::si::angle::degree;
 
@@ -157,5 +169,20 @@ mod tests {
                 90.0
             )
         }
+    }
+
+    // Make sure that [`Dop::try_new`] does not return `None` for sensical scattering angles.
+    #[rstest]
+    #[case(a(90.0))]
+    #[case(a(-90.0))]
+    #[case(a(180.0))]
+    #[case(a(-180.0))]
+    #[case(a(0.0))]
+    fn dop_is_some(#[case] angle: Angle) {
+        assert!(SkyModel::<ModelEnu>::dop_from_scattering_angle(angle).is_some());
+    }
+
+    fn a(angle: f64) -> Angle {
+        Angle::new::<degree>(angle)
     }
 }
