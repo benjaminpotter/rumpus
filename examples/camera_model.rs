@@ -45,7 +45,7 @@ fn pixels_of_interest() -> Vec<PixelCoordinate> {
     let row_off = 512.;
     let col_off = 612.;
     let samples_per_rev = 50;
-    for r in vec![10., 100., 500.] {
+    for r in [10., 100., 500.] {
         for sample in 0..samples_per_rev {
             let norm_sample = sample as f64 / samples_per_rev as f64;
             let angle = TAU * norm_sample;

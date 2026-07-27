@@ -9,7 +9,7 @@ fn main() {
     let output_path = "aop_image.png";
 
     // Open a new image and ensure it is in single channel greyscale format.
-    let raw_image = image::ImageReader::open(&input_path)
+    let raw_image = image::ImageReader::open(input_path)
         .unwrap()
         .decode()
         .unwrap()
@@ -31,7 +31,7 @@ fn main() {
 
     // Save the buffer of RGB pixels as a PNG.
     image::save_buffer(
-        &output_path,
+        output_path,
         &ray_image.aop_bytes(&Jet),
         ray_image.cols() as u32,
         ray_image.rows() as u32,

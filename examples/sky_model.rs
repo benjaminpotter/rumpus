@@ -30,7 +30,7 @@ fn main() -> anyhow::Result<()> {
             let aop = aop
                 .map(|aop| Into::<Angle>::into(aop).get::<degree>())
                 .unwrap_or(f64::NAN);
-            let dop = dop.map(|dop| Into::<f64>::into(dop)).unwrap_or(f64::NAN);
+            let dop = dop.map(Into::<f64>::into).unwrap_or(f64::NAN);
 
             println!(
                 "{solar_azimuth},{solar_elevation},{sample_azimuth},{sample_elevation},{aop},{dop}"

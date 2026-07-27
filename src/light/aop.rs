@@ -194,7 +194,7 @@ mod tests {
     fn frame_reversible(#[case] angle: Angle, #[case] offset: Angle) {
         assert_relative_eq!(
             Aop::<SensorFrame>::from_angle_wrapped(angle)
-                .into_global_frame(offset.clone())
+                .into_global_frame(offset)
                 .into_sensor_frame(offset)
                 .inner
                 .get::<radian>(),

@@ -249,7 +249,6 @@ impl IntensityImage {
         self.inner.cols()
     }
 
-    #[must_use]
     pub fn metapixels(&self) -> impl Iterator<Item = &MetaPixel> {
         self.inner.iter()
     }
@@ -420,16 +419,19 @@ impl RayMap for Jet {
         #[allow(clippy::cast_sign_loss)]
         let x_norm = ((value - min) / interval_width * 255.).floor() as u8;
 
-        let r = 255
-            .min(x_norm.saturating_sub(96).saturating_mul(4))
+        let r = x_norm
+            .saturating_sub(96)
+            .saturating_mul(4)
             .min(255 - x_norm.saturating_sub(224).saturating_mul(4));
 
-        let g = 255
-            .min(x_norm.saturating_sub(32).saturating_mul(4))
+        let g = x_norm
+            .saturating_sub(32)
+            .saturating_mul(4)
             .min(255 - x_norm.saturating_sub(160).saturating_mul(4));
 
-        let b = 255
-            .min(x_norm.saturating_add(127).saturating_mul(4))
+        let b = x_norm
+            .saturating_add(127)
+            .saturating_mul(4)
             .min(255 - x_norm.saturating_sub(96).saturating_mul(4));
 
         [r, g, b]
