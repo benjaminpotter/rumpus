@@ -401,6 +401,7 @@ pub trait RayMap {
 }
 
 pub struct Jet;
+
 impl RayMap for Jet {
     type Output = [u8; 3];
 
@@ -415,32 +416,17 @@ impl RayMap for Jet {
         #[allow(clippy::cast_sign_loss)]
         let x_norm = ((value - min) / interval_width * 255.).floor() as u8;
 
-        let r = vec![
-            255,
-            x_norm.saturating_sub(96).saturating_mul(4),
-            255 - x_norm.saturating_sub(224).saturating_mul(4),
-        ]
-        .into_iter()
-        .min()
-        .unwrap();
+        let r = 255
+            .min(x_norm.saturating_sub(96).saturating_mul(4))
+            .min(255 - x_norm.saturating_sub(224).saturating_mul(4));
 
-        let g = vec![
-            255,
-            x_norm.saturating_sub(32).saturating_mul(4),
-            255 - x_norm.saturating_sub(160).saturating_mul(4),
-        ]
-        .into_iter()
-        .min()
-        .unwrap();
+        let g = 255
+            .min(x_norm.saturating_sub(32).saturating_mul(4))
+            .min(255 - x_norm.saturating_sub(160).saturating_mul(4));
 
-        let b = vec![
-            255,
-            x_norm.saturating_add(127).saturating_mul(4),
-            255 - x_norm.saturating_sub(96).saturating_mul(4),
-        ]
-        .into_iter()
-        .min()
-        .unwrap();
+        let b = 255
+            .min(x_norm.saturating_add(127).saturating_mul(4))
+            .min(255 - x_norm.saturating_sub(96).saturating_mul(4));
 
         [r, g, b]
     }

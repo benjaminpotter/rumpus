@@ -22,4 +22,9 @@ rstest = "0.26.1"
 approx = "0.5.1"
 insta = "1.46.1"
 anyhow = "1.0"
+criterion = { version = "0.8", features = ["html_reports"] }
+
+[[bench]]
+name = "image"
+harness = false
 
