@@ -23,22 +23,6 @@ impl<Frame> Aop<Frame> {
 
     /// Creates a new `Aop` from `angle`.
     ///
-    /// Returns `None` if `angle` is not between -90 and 90.
-    #[must_use]
-    #[deprecated]
-    pub fn from_angle(angle: Angle) -> Option<Self> {
-        if !Self::is_valid(angle) {
-            return None;
-        }
-
-        Some(Self {
-            inner: angle,
-            _phan: std::marker::PhantomData,
-        })
-    }
-
-    /// Creates a new `Aop` from `angle`.
-    ///
     /// # Errors
     /// Will return `Err` if `angle` is outside of [-PI, PI].
     pub fn try_from_angle(angle: Angle) -> Result<Self, LightError> {
@@ -146,7 +130,7 @@ mod tests {
         fn aop_from_wrapped(angle: i8) -> bool {
             // Will panic if it tries to create an invalid Aop.
             // Should never panic due to wrapping.
-            Aop::<GlobalFrame>::from_angle_wrapped(a(angle as f64));
+            let _ = Aop::<GlobalFrame>::from_angle_wrapped(a(angle as f64));
 
             // If we didn't panic, call this test a success.
             true
@@ -157,13 +141,17 @@ mod tests {
     #[case(a(180.0))]
     #[case(a(91.0))]
     fn invalid_aop(#[case] angle: Angle) {
-        assert_eq!(Aop::<GlobalFrame>::from_angle(angle), None,);
+        assert_eq!(
+            Aop::<GlobalFrame>::try_from_angle(angle),
+            Err(LightError::AngleOutOfBounds { angle })
+        );
     }
 
     #[rstest]
     #[case(a(90.0), a(-89.0), a(1.0))]
     fn add_aop(#[case] lhs: Angle, #[case] rhs: Angle, #[case] sum: Angle) {
-        let result = Aop::<GlobalFrame>::from_angle(lhs).unwrap() + Aop::from_angle(rhs).unwrap();
+        let result =
+            Aop::<GlobalFrame>::try_from_angle(lhs).unwrap() + Aop::try_from_angle(rhs).unwrap();
         assert_relative_eq!(result.inner.get::<radian>(), sum.get::<radian>(),);
     }
 
@@ -172,7 +160,8 @@ mod tests {
     #[case(a(-90.0), a(90.0), a(0.0))]
     #[case(a(-90.0), a(-90.0), a(0.0))]
     fn sub_aop(#[case] lhs: Angle, #[case] rhs: Angle, #[case] dif: Angle) {
-        let result = Aop::<GlobalFrame>::from_angle(lhs).unwrap() - Aop::from_angle(rhs).unwrap();
+        let result =
+            Aop::<GlobalFrame>::try_from_angle(lhs).unwrap() - Aop::try_from_angle(rhs).unwrap();
         assert_relative_eq!(result.inner.get::<radian>(), dif.get::<radian>());
     }
 
