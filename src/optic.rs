@@ -263,7 +263,12 @@ impl Optic for PinholeOptic {
         );
         let polar = ray_length_xy.atan2(-self.focal_length);
 
+        // Ensure that the direction points away from the positive Z axis.
+        // If all of the reference frames are correctly implemented this should never fail.
+        // Keeping this assert here for the case in future where incorrect edits are made.
+        // If this was silent, it may make debugging more challenging.
         assert!(polar <= Angle::HALF_TURN && polar >= Angle::HALF_TURN / 2.);
+
         RayDirection::from_angles(polar, azimuth)
     }
 
