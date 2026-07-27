@@ -2,7 +2,6 @@
 
 //! Skylight Polarization Utilities
 
-pub mod error;
 pub mod image;
 pub mod light;
 pub mod model;
