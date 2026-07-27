@@ -5,7 +5,7 @@ pub mod aop;
 pub mod dop;
 pub mod stokes;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq)]
 pub enum LightError {
     #[error("expected angle in range [-PI, PI] but got: {angle:#?}")]
     AngleOutOfBounds { angle: Angle },

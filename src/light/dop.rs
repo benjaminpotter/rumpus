@@ -1,29 +1,13 @@
-use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
-
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
-
 use crate::light::LightError;
+use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
 
 /// Describes the intensity ratio of polarized light in a ray.
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Dop {
     inner: f64,
 }
 
 impl Dop {
-    /// Create a new `Dop` from `degree`.
-    #[must_use]
-    #[deprecated]
-    pub fn new(degree: f64) -> Option<Self> {
-        if (0.0..=1.0).contains(&degree) {
-            Some(Self { inner: degree })
-        } else {
-            None
-        }
-    }
-
     /// Create a new `Dop` from `degree`.
     ///
     /// # Errors
@@ -162,16 +146,5 @@ impl Div<Dop> for f64 {
 impl DivAssign<Dop> for f64 {
     fn div_assign(&mut self, rhs: Dop) {
         *self = *self / rhs;
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    #[should_panic]
-    fn create_invalid_dop() {
-        Dop::new(-1.0).unwrap();
     }
 }

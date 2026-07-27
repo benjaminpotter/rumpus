@@ -1,4 +1,7 @@
-use rumpus::{image::Jet, prelude::*};
+//! Parse a monocolor [`IntensityImage`] from a division-of-focal-plane polarization camera into a
+//! [`RayImage`] where it can be interpreted as a false color [`Aop`] image and saved to a PNG.
+
+use rumpus::image::{IntensityImage, Jet, RayImage};
 
 fn main() {
     // Define required parameters.
@@ -6,7 +9,7 @@ fn main() {
     let output_path = "aop_image.png";
 
     // Open a new image and ensure it is in single channel greyscale format.
-    let raw_image = image::ImageReader::open(&input_path)
+    let raw_image = image::ImageReader::open(input_path)
         .unwrap()
         .decode()
         .unwrap()
@@ -18,16 +21,17 @@ fn main() {
         IntensityImage::from_bytes(width as usize, height as usize, &raw_image.into_raw())
             .expect("image dimensions are even");
 
-    // Filter the rays from the intensity image by DoP.
-    // Convert the sparse RayIterator into a dense RayImage using the specs of
-    // the image sensor as a RaySensor.
-    let rays: Vec<_> = intensity_image.rays().map(|ray| Some(ray)).collect();
-    let ray_image =
-        RayImage::from_rays(rays, intensity_image.height(), intensity_image.width()).unwrap();
+    // Construct a RayImage from the metapixels in the IntensityImage.
+    let ray_image = RayImage::from_metapixels(
+        intensity_image.metapixels(),
+        intensity_image.rows(),
+        intensity_image.cols(),
+    )
+    .unwrap();
 
     // Save the buffer of RGB pixels as a PNG.
     image::save_buffer(
-        &output_path,
+        output_path,
         &ray_image.aop_bytes(&Jet),
         ray_image.cols() as u32,
         ray_image.rows() as u32,

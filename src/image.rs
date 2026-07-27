@@ -1,6 +1,5 @@
 use crate::{
-    iter::RayIterator,
-    light::stokes::StokesVec,
+    light::stokes::Stokes,
     ray::{Ray, SensorFrame},
 };
 use rayon::prelude::*;
@@ -17,11 +16,10 @@ pub enum ImageError {
     },
 
     #[error(
-        "intensity image reader requires even numbered image dimensions: found {}x{}",
-        width,
-        height
+        "intensity image reader requires even numbered image dimensions: found {}",
+        dimension
     )]
-    InvalidDimensions { width: usize, height: usize },
+    OddDimension { dimension: usize },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -54,7 +52,7 @@ impl<T> Matrix<T> {
         self.elements.iter()
     }
 
-    fn cells(&self) -> Cells<'_, T> {
+    fn cells(&self) -> Cells<std::slice::Iter<'_, T>> {
         Cells::new(&self.elements, self.rows, self.cols)
     }
 
@@ -75,8 +73,8 @@ impl<T> Matrix<T> {
     }
 }
 
-struct Cells<'a, T> {
-    elements: std::vec::IntoIter<&'a T>,
+struct Cells<I> {
+    elements: I,
     index: usize,
     rows: usize,
     cols: usize,
@@ -89,9 +87,11 @@ struct MatrixCell<'a, T> {
     col: usize,
 }
 
-impl<'a, T> Cells<'a, T> {
-    fn new(elements: impl IntoIterator<Item = &'a T>, rows: usize, cols: usize) -> Self {
-        let elements: Vec<_> = elements.into_iter().collect();
+impl<I> Cells<I> {
+    fn new(elements: impl IntoIterator<IntoIter = I>, rows: usize, cols: usize) -> Self
+    where
+        I: Iterator,
+    {
         Self {
             elements: elements.into_iter(),
             index: 0,
@@ -101,7 +101,10 @@ impl<'a, T> Cells<'a, T> {
     }
 }
 
-impl<'a, T> Iterator for Cells<'a, T> {
+impl<'a, T: 'a, I> Iterator for Cells<I>
+where
+    I: Iterator<Item = &'a T>,
+{
     type Item = MatrixCell<'a, T>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -120,22 +123,22 @@ impl<'a, T> Iterator for Cells<'a, T> {
     }
 }
 
+/// A metapixel is a group of four pixels that have two sets of orthogonal linear polarizing filters.
+/// Each element in this buffer stores an intensity value in 0, 45, 90, 135 order.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct IntensityPixel {
-    /// A metapixel is a group of four intensity pixels that have two sets of orthogonal linear polarizing filters.
-    /// Each element in this buffer stores an intensity value in 0, 45, 90, 135 order.
+pub struct MetaPixel {
     inner: [f64; 4],
 }
 
-impl IntensityPixel {
+impl MetaPixel {
     /// The Stokes vectors are computed by:
     /// ```text
     /// S_0 = (I_0 + I_45 + I_90 + I_135) / 2
     /// S_1 = I_0 - I_90
     /// S_2 = I_45 - I_135
     /// ```
-    fn stokes(&self) -> StokesVec<SensorFrame> {
-        StokesVec::new(
+    pub fn stokes(&self) -> Stokes<SensorFrame> {
+        Stokes::new(
             (self.inner[0] + self.inner[1] + self.inner[2] + self.inner[3]) / 2.,
             self.inner[0] - self.inner[2],
             self.inner[1] - self.inner[3],
@@ -150,10 +153,7 @@ impl IntensityPixel {
 /// the polarization state of incident rays.
 #[derive(Clone, Debug, PartialEq)]
 pub struct IntensityImage {
-    /// Buffer of metapixels.
-    metapixels: Vec<IntensityPixel>,
-    width: usize,
-    height: usize,
+    inner: Matrix<MetaPixel>,
 }
 
 impl IntensityImage {
@@ -191,27 +191,39 @@ impl IntensityImage {
     ///
     /// # Errors
     pub fn from_bytes(width: usize, height: usize, bytes: &[u8]) -> Result<Self, ImageError> {
+        // --------------
+        // PRECONDITIONS:
+        // - width and height are even (since they represent metapixels)
+        // - length of bytes matches the provided dimensions
+
         let meta_width = width
             .checked_div(2)
-            .ok_or(ImageError::InvalidDimensions { width, height })?;
+            .ok_or(ImageError::OddDimension { dimension: width })?;
         let meta_height = height
             .checked_div(2)
-            .ok_or(ImageError::InvalidDimensions { width, height })?;
+            .ok_or(ImageError::OddDimension { dimension: height })?;
 
-        let coords: Vec<(usize, usize)> = (0..meta_height)
-            .flat_map(|y| (0..meta_width).map(move |x| (x, y)))
-            .collect();
+        if bytes.len() != width * height {
+            return Err(ImageError::SizeMismatch {
+                rows: height,
+                cols: width,
+                len: bytes.len(),
+            });
+        }
+        // --------------
 
-        let metapixels: Vec<IntensityPixel> = coords
+        let metapixels: Vec<MetaPixel> = (0..(meta_width * meta_height))
             .into_par_iter()
-            .map(|(x, y)| {
+            .map(|i| {
+                let x = i % meta_width;
+                let y = i / meta_width;
+
                 let i000 = (x * 2 + 1) + (y * 2 + 1) * width;
                 let i045 = (x * 2) + (y * 2 + 1) * width;
                 let i090 = (x * 2) + (y * 2) * width;
                 let i135 = (x * 2 + 1) + (y * 2) * width;
 
-                // FIXME: Catch problems with the size of `bytes`.
-                IntensityPixel {
+                MetaPixel {
                     inner: [
                         f64::from(bytes[i000]),
                         f64::from(bytes[i045]),
@@ -223,52 +235,47 @@ impl IntensityImage {
             .collect();
 
         Ok(Self {
-            metapixels,
-            width: meta_width,
-            height: meta_height,
+            inner: Matrix::from_elements(metapixels, meta_height, meta_width)?,
         })
     }
 
     #[must_use]
-    pub fn width(&self) -> usize {
-        self.width
+    pub fn rows(&self) -> usize {
+        self.inner.rows()
     }
 
     #[must_use]
-    pub fn height(&self) -> usize {
-        self.height
+    pub fn cols(&self) -> usize {
+        self.inner.cols()
     }
 
-    #[must_use]
-    pub fn rays(&self) -> Rays<'_> {
-        Rays {
-            inner: self.metapixels.iter(),
-        }
+    pub fn metapixels(&self) -> impl Iterator<Item = &MetaPixel> {
+        self.inner.iter()
     }
 }
-
-/// An iterator over rays.
-#[derive(Clone, Debug)]
-pub struct Rays<'a> {
-    inner: std::slice::Iter<'a, IntensityPixel>,
-}
-
-impl Iterator for Rays<'_> {
-    type Item = Ray<SensorFrame>;
-    fn next(&mut self) -> Option<Self::Item> {
-        let px = self.inner.next()?;
-        // TODO: Might want to propagate this error..
-        Ray::try_from(px.stokes()).ok()
-    }
-}
-
-// All of RayIterator's functions are defined using Iterator.
-impl RayIterator<SensorFrame> for Rays<'_> {}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct RayImage<Frame> {
     inner: Matrix<Option<Ray<Frame>>>,
     _phan: std::marker::PhantomData<Frame>,
+}
+
+impl RayImage<SensorFrame> {
+    ///
+    /// # Errors
+    pub fn from_metapixels<'a>(
+        metapixels: impl IntoIterator<Item = &'a MetaPixel>,
+        rows: usize,
+        cols: usize,
+    ) -> Result<Self, ImageError> {
+        Self::from_rays(
+            metapixels
+                .into_iter()
+                .map(|mpx| Ray::try_from(mpx.stokes()).ok()),
+            rows,
+            cols,
+        )
+    }
 }
 
 impl<Frame> RayImage<Frame> {
@@ -339,8 +346,34 @@ impl<Frame> RayImage<Frame> {
             .flat_map(|value| color_map.map(value, 0.0, 1.0))
             .collect()
     }
+
+    /// Apply a map from the intensity of each [`Ray`] to a sequence of bytes.
+    ///
+    /// Will dynamically adjust the upper bound of the mapping using the largest intensity.
+    /// This implies there are two passes through the image to (1) find the largest intensity and
+    /// (2) compute the mapped values.
+    pub fn intensity_bytes<M>(&self, color_map: &M) -> Vec<u8>
+    where
+        Frame: Copy,
+        M: RayMap,
+        M::Output: IntoIterator<Item = u8>,
+    {
+        let mut max = f64::MIN;
+        for ray in self.rays().flatten() {
+            let intensity = ray.intensity();
+            if intensity > max {
+                max = intensity;
+            }
+        }
+
+        self.rays()
+            .map(|pixel| pixel.map_or(f64::NAN, |ray| ray.intensity()))
+            .flat_map(|value| color_map.map(value, 0., max))
+            .collect()
+    }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct RayPixel<'a, Frame> {
     ray: Option<&'a Ray<Frame>>,
     row: usize,
@@ -371,6 +404,7 @@ pub trait RayMap {
 }
 
 pub struct Jet;
+
 impl RayMap for Jet {
     type Output = [u8; 3];
 
@@ -385,32 +419,20 @@ impl RayMap for Jet {
         #[allow(clippy::cast_sign_loss)]
         let x_norm = ((value - min) / interval_width * 255.).floor() as u8;
 
-        let r = vec![
-            255,
-            x_norm.saturating_sub(96).saturating_mul(4),
-            255 - x_norm.saturating_sub(224).saturating_mul(4),
-        ]
-        .into_iter()
-        .min()
-        .unwrap();
+        let r = x_norm
+            .saturating_sub(96)
+            .saturating_mul(4)
+            .min(255 - x_norm.saturating_sub(224).saturating_mul(4));
 
-        let g = vec![
-            255,
-            x_norm.saturating_sub(32).saturating_mul(4),
-            255 - x_norm.saturating_sub(160).saturating_mul(4),
-        ]
-        .into_iter()
-        .min()
-        .unwrap();
+        let g = x_norm
+            .saturating_sub(32)
+            .saturating_mul(4)
+            .min(255 - x_norm.saturating_sub(160).saturating_mul(4));
 
-        let b = vec![
-            255,
-            x_norm.saturating_add(127).saturating_mul(4),
-            255 - x_norm.saturating_sub(96).saturating_mul(4),
-        ]
-        .into_iter()
-        .min()
-        .unwrap();
+        let b = x_norm
+            .saturating_add(127)
+            .saturating_mul(4)
+            .min(255 - x_norm.saturating_sub(96).saturating_mul(4));
 
         [r, g, b]
     }

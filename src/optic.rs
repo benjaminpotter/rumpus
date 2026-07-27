@@ -1,5 +1,3 @@
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
 use uom::{
     ConstZero,
     si::{
@@ -29,7 +27,6 @@ use uom::{
 ///                 Optical Center
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct SensorCoordinate {
     x: Length,
     y: Length,
@@ -72,7 +69,6 @@ impl AsRef<SensorCoordinate> for SensorCoordinate {
 /// For a more abstract, floating point representation of a pixel coordinate see
 /// [`SensorCoordinate`].
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PixelCoordinate {
     row: usize,
     col: usize,
@@ -104,7 +100,6 @@ impl AsRef<PixelCoordinate> for PixelCoordinate {
 /// Describes an image sensor including its physical dimensions and pixel size.
 /// This type allows conversion between a [`SensorCoordinate`] and a [`PixelCoordinate`].
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ImageSensor {
     pixel_size: Length,
     rows: usize,
@@ -208,7 +203,6 @@ impl ImageSensor {
 ///
 /// Polar is relative to the positive Z axis.
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct RayDirection {
     polar: Angle,
     azimuth: Angle,
@@ -243,7 +237,6 @@ pub trait Optic {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PinholeOptic {
     focal_length: Length,
 }
@@ -270,7 +263,12 @@ impl Optic for PinholeOptic {
         );
         let polar = ray_length_xy.atan2(-self.focal_length);
 
+        // Ensure that the direction points away from the positive Z axis.
+        // If all of the reference frames are correctly implemented this should never fail.
+        // Keeping this assert here for the case in future where incorrect edits are made.
+        // If this was silent, it may make debugging more challenging.
         assert!(polar <= Angle::HALF_TURN && polar >= Angle::HALF_TURN / 2.);
+
         RayDirection::from_angles(polar, azimuth)
     }
 
@@ -285,7 +283,6 @@ impl Optic for PinholeOptic {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Camera<O> {
     optic: O,
     sensor: ImageSensor,
