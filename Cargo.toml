@@ -1,6 +1,6 @@
 [package]
 name = "rumpus"
-version = "0.6.1"
+version = "0.7.0"
 license = "GPL-3.0-or-later"
 description = "A framework for navigation using skylight polarization."
 homepage = "https://benpot.com"
