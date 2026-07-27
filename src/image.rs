@@ -212,13 +212,12 @@ impl IntensityImage {
         }
         // --------------
 
-        let coords: Vec<(usize, usize)> = (0..meta_height)
-            .flat_map(|y| (0..meta_width).map(move |x| (x, y)))
-            .collect();
-
-        let metapixels: Vec<MetaPixel> = coords
+        let metapixels: Vec<MetaPixel> = (0..(meta_width * meta_height))
             .into_par_iter()
-            .map(|(x, y)| {
+            .map(|i| {
+                let x = i % meta_width;
+                let y = i / meta_width;
+
                 let i000 = (x * 2 + 1) + (y * 2 + 1) * width;
                 let i045 = (x * 2) + (y * 2 + 1) * width;
                 let i090 = (x * 2) + (y * 2) * width;
