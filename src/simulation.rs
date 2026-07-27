@@ -11,7 +11,7 @@ use sguaba::{
     engineering::Pose,
     math::{RigidBodyTransform, Rotation},
     system,
-    systems::{BearingDefined, Ecef, EquivalentTo},
+    systems::{BearingDefined, Ecef},
 };
 use uom::si::f64::Angle;
 
@@ -32,7 +32,6 @@ system!(struct CameraXyz using right-handed XYZ);
 /// [`Ray`]s encode the polarization state (i.e., the angle and degree of polarization) for
 /// different regions of the sky.
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Simulation<O> {
     camera: Camera<O>,
     camera_pose: Pose<SimulationEnu>,

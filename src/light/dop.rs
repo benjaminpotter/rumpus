@@ -1,13 +1,8 @@
-use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
-
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
-
 use crate::light::LightError;
+use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
 
 /// Describes the intensity ratio of polarized light in a ray.
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Dop {
     inner: f64,
 }

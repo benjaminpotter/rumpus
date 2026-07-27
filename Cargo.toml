@@ -9,13 +9,9 @@ nalgebra = "0.33.0"
 rand = "0.9"
 chrono = { version="0.4.41", features=["serde"] }
 spa = "0.5.1"
-serde = { version="1.0", features=["derive"], optional=true }
 sguaba = "0.9.4"
 uom = "0.37.0"
 thiserror = "2.0.17"
-
-[features]
-serde = ["dep:serde", "nalgebra/serde-serialize" ]
 
 [dev-dependencies]
 rand_chacha = "0.9.0"

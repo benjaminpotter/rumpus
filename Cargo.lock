@@ -1154,7 +1154,6 @@ dependencies = [
  "rand_chacha 0.9.0",
  "rayon",
  "rstest",
- "serde",
  "sguaba",
  "spa",
  "thiserror 2.0.17",

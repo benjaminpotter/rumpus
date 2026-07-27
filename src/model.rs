@@ -1,8 +1,6 @@
 use crate::light::dop::Dop;
 use crate::{light::aop::Aop, ray::GlobalFrame};
 use chrono::prelude::*;
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
 use sguaba::CoordinateSystem;
 use sguaba::systems::EnuLike;
 use sguaba::{Bearing, systems::Wgs84};
@@ -14,7 +12,6 @@ use uom::{
 /// Describes the skylight polarization pattern for a given earth centered
 /// (`Wgs84`) position and a UTC timepoint.
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct SkyModel<In> {
     /// The location of the sun's center for an observer on the ground.
     solar_bearing: Bearing<In>,

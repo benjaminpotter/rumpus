@@ -1,3 +1,6 @@
+//! Parse a monocolor [`IntensityImage`] from a division-of-focal-plane polarization camera into a
+//! [`RayImage`] where it can be interpreted as a false color [`Aop`] image and saved to a PNG.
+
 use rumpus::image::{IntensityImage, Jet, RayImage};
 
 fn main() {
@@ -18,7 +21,7 @@ fn main() {
         IntensityImage::from_bytes(width as usize, height as usize, &raw_image.into_raw())
             .expect("image dimensions are even");
 
-    // Convert the sparse RayIterator into a dense RayImage.
+    // Construct a RayImage from the metapixels in the IntensityImage.
     let ray_image = RayImage::from_metapixels(
         intensity_image.metapixels(),
         intensity_image.rows(),

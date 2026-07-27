@@ -1,5 +1,4 @@
 //! Show different camera models.
-//!
 
 use std::f64::consts::TAU;
 

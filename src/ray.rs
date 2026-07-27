@@ -1,6 +1,4 @@
 use crate::light::{LightError, aop::Aop, dop::Dop, stokes::Stokes};
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uom::si::f64::Angle;
 
@@ -11,16 +9,13 @@ pub enum RayError {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct GlobalFrame;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct SensorFrame;
 
 /// Describes the angle and degree of polarization for a single ray.
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Ray<Frame> {
     /// Angle of polarization of the `Ray`.
     ///

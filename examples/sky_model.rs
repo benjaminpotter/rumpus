@@ -1,3 +1,6 @@
+//! Use a [`SkyModel`] to predict the [`Aop`] and [`Dop`] for a series of sun positions and sky
+//! points.
+
 use rumpus::model::SkyModel;
 use sguaba::{Bearing, bearing, system};
 use uom::si::{angle::degree, f64::Angle};
@@ -12,6 +15,8 @@ fn main() -> anyhow::Result<()> {
         "solar_azimuth_deg,solar_elevation_deg,sample_azimuth_deg,sample_elevation_deg,aop_deg,dop"
     );
     for solar_bearing in solar_bearings {
+        // Construct a SkyModel from the position of the sun in the sky.
+        // Since the position of the sun can be inferred, this can also be done using a Wgs84 position and UTC timestamp.
         let sky_model = SkyModel::from_solar_bearing(solar_bearing);
 
         for sample_bearing in &sample_bearings {

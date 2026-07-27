@@ -1,5 +1,3 @@
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
 use uom::{
     ConstZero,
     si::{
@@ -29,7 +27,6 @@ use uom::{
 ///                 Optical Center
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct SensorCoordinate {
     x: Length,
     y: Length,
@@ -72,7 +69,6 @@ impl AsRef<SensorCoordinate> for SensorCoordinate {
 /// For a more abstract, floating point representation of a pixel coordinate see
 /// [`SensorCoordinate`].
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PixelCoordinate {
     row: usize,
     col: usize,
@@ -104,7 +100,6 @@ impl AsRef<PixelCoordinate> for PixelCoordinate {
 /// Describes an image sensor including its physical dimensions and pixel size.
 /// This type allows conversion between a [`SensorCoordinate`] and a [`PixelCoordinate`].
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ImageSensor {
     pixel_size: Length,
     rows: usize,
@@ -208,7 +203,6 @@ impl ImageSensor {
 ///
 /// Polar is relative to the positive Z axis.
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct RayDirection {
     polar: Angle,
     azimuth: Angle,
@@ -243,7 +237,6 @@ pub trait Optic {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PinholeOptic {
     focal_length: Length,
 }
@@ -285,7 +278,6 @@ impl Optic for PinholeOptic {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Camera<O> {
     optic: O,
     sensor: ImageSensor,
