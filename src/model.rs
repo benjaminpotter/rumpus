@@ -26,15 +26,14 @@ impl<In> SkyModel<In> {
 
     /// Create a new [`SkyModel`] from a position and a time.
     ///
-    /// # Safety
     /// This function only produces a valid [`SkyModel`] if the origin of `In` is coincident with
     /// `position`. Otherwise, the model will interpret the solar bearing from `position`, but
     /// return results that interpret bearings from the origin of `In`.
     ///
     /// # Panics
     /// Will panic if the latitude and longitude provided by `position` are not valid.
-    /// Since Wgs84 enforces valid `position`s this should not be a concern.
-    pub unsafe fn from_position_and_time(
+    /// Since Wgs84 enforces valid positions, this should not be a concern.
+    pub fn from_position_and_time(
         position: impl Into<Wgs84>,
         time: impl Into<DateTime<Utc>>,
     ) -> Self

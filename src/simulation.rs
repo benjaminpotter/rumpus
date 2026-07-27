@@ -46,8 +46,8 @@ impl<O> Simulation<O> {
     /// in the sky.
     /// This is determined with the time provided and the position of the camera taken from its pose.
     pub fn new(camera: Camera<O>, camera_pose: Pose<Ecef>, time: DateTime<Utc>) -> Self {
-        // SAFETY: The origin of SimulationEnu is coincident with the camera's position.
-        let model = unsafe { SkyModel::from_position_and_time(camera_pose.position(), time) };
+        // The origin of SimulationEnu must be coincident with the camera's position.
+        let model = SkyModel::from_position_and_time(camera_pose.position(), time);
         let camera_pose =
             unsafe { RigidBodyTransform::ecef_to_enu_at(&camera_pose.position().into()) }
                 .transform(camera_pose);
