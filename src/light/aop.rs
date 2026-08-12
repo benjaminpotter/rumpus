@@ -2,7 +2,10 @@ use crate::{
     light::LightError,
     ray::{GlobalFrame, SensorFrame},
 };
-use uom::si::f64::Angle;
+use uom::si::{
+    angle::{degree, radian},
+    f64::Angle,
+};
 
 /// Describes the e-vector orientation of a ray.
 ///
@@ -60,6 +63,14 @@ impl<Frame> Aop<Frame> {
         Frame: Copy,
     {
         (self - other).inner.abs() <= thres
+    }
+
+    pub fn as_degrees(&self) -> f64 {
+        self.inner.get::<degree>()
+    }
+
+    pub fn as_radians(&self) -> f64 {
+        self.inner.get::<radian>()
     }
 }
 
